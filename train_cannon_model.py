@@ -1,8 +1,10 @@
 from specmatchemp.spectrum import read_hires_fits
+from scipy.ndimage import convolve1d
 from astropy.table import Table
 from astropy.io import fits
 import matplotlib.pyplot as plt
 import specmatchemp.library
+import specmatchemp.kernels
 import thecannon as tc
 import pandas as pd
 import numpy as np
@@ -17,35 +19,67 @@ df_path = './data/cannon_training_data'
 
 # training labels
 lib = specmatchemp.library.read_hdf()
-# set vsini=2 for stars where only upper limits are reported
 training_set_table = lib.library_params.copy()
 
 # snr cutoff for training set
 training_set_table = training_set_table.query('snr>150')
 
+# =============== handle vsini upper limits =========================================
 
 # add ladder of broadened spectra for rows with vsini upper limits
-
 # assume vsini=0 and record indices
 training_set_table['vsini'] = training_set_table['vsini'].replace('--',0.0) 
-indices_to_insert = training_set_table.index[training_set_table['vsini'] == 0].tolist()
+training_set_table['broadened_vsini'] = False # for all targets pre-broadening
+indices_to_insert = np.where(training_set_table.vsini==0)[0]
 
 # insert new rows where vsini=0 with broadened vsini values
 def broadened_vsini_row(idx, vsini):
     new_vsini_row = training_set_table.iloc[idx].copy()
     new_vsini_row['vsini']=vsini
+    new_vsini_row['broadened_vsini']=True
+    new_vsini_row['source_name'] = new_vsini_row['source_name']+'-'+str(vsini)
     return new_vsini_row
 rows_with_broadening = []
 for idx in range(len(training_set_table)):
-    rows_with_broadening.append(training_set_table.iloc[idx])  # Keep the original row
-    if idx in indices_to_insert:
-        # Add new rows with vsini=3,5,7km/s
-        rows_with_broadening.append(broadened_vsini_row(idx, 3))
-        rows_with_broadening.append(broadened_vsini_row(idx, 5))
-        rows_with_broadening.append(broadened_vsini_row(idx, 7))
-training_set_table = pd.DataFrame(rows_with_broadening)
-import pdb;pdb.set_trace()
+	new_row = training_set_table.iloc[idx] # original target information
 
+	if idx in indices_to_insert:
+		# Add new rows with vsini=3,5,7km/s
+		rows_with_broadening.append(broadened_vsini_row(idx, 3))
+		rows_with_broadening.append(broadened_vsini_row(idx, 5))
+		rows_with_broadening.append(broadened_vsini_row(idx, 7))
+		# rename current row to flag vsini=0
+		new_row['source_name'] = new_row['source_name']+'-0'
+
+	# Keep the original row
+	rows_with_broadening.append(new_row)  
+# re-write training table with broadened vsini stars
+training_set_table = pd.DataFrame(rows_with_broadening)
+
+def broaden(vsini, spec):
+    """
+    Applies a broadening kernel to the given spectrum (or error)
+    Adopted from specmatch.Match() class from Yee & Petigura 2018
+
+    Args:
+        vsini (float): vsini to determine width of broadening
+        spec (Spectrum): spectrum to broaden
+    Returns:
+        broadened (Spectrum): Broadened spectrum
+    """
+    SPEED_OF_LIGHT = 2.99792e5
+    dv = (spec.w[1]-spec.w[0])/spec.w[0]*SPEED_OF_LIGHT
+    n = 151     # fixed number of points in the kernel
+    varr, kernel = specmatchemp.kernels.rot(n, dv, vsini)
+    # broadened = signal.fftconvolve(spec, kernel, mode='same')
+
+    broadened_spec = spec.copy()
+    broadened_spec.s = convolve1d(broadened_spec.s, kernel)
+    broadened_spec.serr = convolve1d(broadened_spec.serr, kernel)
+
+    return broadened_spec
+
+# =============== save training set + wavelength data =============================================
 
 # rewrite columns and save to file
 training_set_table = training_set_table.rename(columns=
@@ -70,10 +104,13 @@ reference_w_filename = './data/cannon_training_data/cannon_reference_w.fits'
 fits.HDUList([fits.PrimaryHDU(wav_data)]).writeto(reference_w_filename, overwrite=True)
 print('clipped reference wavlength saved to {}'.format(reference_w_filename))
 
+# =============== load and save training data =============================================
 
 def single_order_training_data(order_idx, filter_wavelets=True):
 	"""
-	stores training flux, sigma for a particular HIRES spectrum order
+	Stores training flux, sigma for a particular HIRES spectrum order.
+	For spectra that require vsini broadening, this is applied
+	before wavelet-filtering.
 
 	Args:
 		order_idx (int): index corresponding to HIRES order of interested
@@ -112,9 +149,15 @@ def single_order_training_data(order_idx, filter_wavelets=True):
 	    rescaled_order = KOI_spectrum.rescale(original_wav_data[order_idx])
 
 	    # process for Cannon training
-	    flux_norm, sigma_norm = dwt.load_spectrum(
-	        rescaled_order, 
-	        filter_wavelets)
+	    # (includes vsini broadening and wavelet-filtering)
+	    if row.broadened_vsini==True:
+	    	flux_norm, sigma_norm = dwt.load_spectrum(
+	    		broaden(row.smemp_vsini, rescaled_order), 
+	    		filter_wavelets)
+	    else:
+	    	flux_norm, sigma_norm = dwt.load_spectrum(
+		        rescaled_order, 
+		        filter_wavelets)
 
 	    # save to lists
 	    flux_list.append(flux_norm)
@@ -129,7 +172,6 @@ def single_order_training_data(order_idx, filter_wavelets=True):
 	sigma_df_n.insert(0, 'order_number', order_n)
 
 	return flux_df_n, sigma_df_n
-
 
 # for de-bugging purposes
 import time
@@ -157,6 +199,8 @@ training_flux_original.to_csv('{}/training_flux_original.csv'.format(df_path), i
 training_sigma_original.to_csv('{}/training_sigma_original.csv'.format(df_path), index=False)
 print('training flux and sigma pre wavelet filter saved to .csv files')
 print('total time to load training data = {} seconds'.format(time.time()-t0))
+
+import pdb;pdb.set_trace()
 
 # =============== functions to train model + save validation plots =============================
 
