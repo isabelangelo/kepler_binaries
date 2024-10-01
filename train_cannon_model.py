@@ -19,8 +19,35 @@ df_path = './data/cannon_training_data'
 lib = specmatchemp.library.read_hdf()
 # set vsini=2 for stars where only upper limits are reported
 training_set_table = lib.library_params.copy()
-#training_set_table['vsini'] = training_set_table['vsini'].replace('--',2.0) # require finite vsini
-training_set_table = training_set_table[training_set_table['vsini']!='--']
+
+# snr cutoff for training set
+training_set_table = training_set_table.query('snr>150')
+
+
+# add ladder of broadened spectra for rows with vsini upper limits
+
+# assume vsini=0 and record indices
+training_set_table['vsini'] = training_set_table['vsini'].replace('--',0.0) 
+indices_to_insert = training_set_table.index[training_set_table['vsini'] == 0].tolist()
+
+# insert new rows where vsini=0 with broadened vsini values
+def broadened_vsini_row(idx, vsini):
+    new_vsini_row = training_set_table.iloc[idx].copy()
+    new_vsini_row['vsini']=vsini
+    return new_vsini_row
+rows_with_broadening = []
+for idx in range(len(training_set_table)):
+    rows_with_broadening.append(training_set_table.iloc[idx])  # Keep the original row
+    if idx in indices_to_insert:
+        # Add new rows with vsini=3,5,7km/s
+        rows_with_broadening.append(broadened_vsini_row(idx, 3))
+        rows_with_broadening.append(broadened_vsini_row(idx, 5))
+        rows_with_broadening.append(broadened_vsini_row(idx, 7))
+training_set_table = pd.DataFrame(rows_with_broadening)
+import pdb;pdb.set_trace()
+
+
+# rewrite columns and save to file
 training_set_table = training_set_table.rename(columns=
     {'Teff':'smemp_teff','logg':'smemp_logg', 'feh':'smemp_feh','vsini':'smemp_vsini'})
 training_set_table = training_set_table.astype(
@@ -135,7 +162,6 @@ print('total time to load training data = {} seconds'.format(time.time()-t0))
 
 # CKS labels + spectra for model validation
 cks_label_df = pd.read_csv('./data/label_and_metric_dataframes/cks_labels.csv')
-cks_label_df = cks_label_df.query('cks_vsini<11') # remove high vsini stars from validation sample
 cks_flux_dwt_df = pd.read_csv('./data/spectrum_dataframes/cks_flux_dwt.csv')
 cks_sigma_dwt_df = pd.read_csv('./data/spectrum_dataframes/cks_sigma_dwt.csv')
 cks_flux_original_df = pd.read_csv('./data/spectrum_dataframes/cks_flux_original.csv')
@@ -310,25 +336,25 @@ def train_cannon_model(order_numbers, model_suffix, filter_type='dwt',
 	model.write(model_filename, include_training_set_spectra=True, overwrite=True)
 	print('model written to {}'.format(model_filename))
 
-	# compute Cannon labels
-	cannon_label_df = compute_cks_cannon_labels(model, order_numbers, filter_type)
-	cannon_label_filename = model_path + 'cannon_labels.csv'
-	cannon_label_df.to_csv(cannon_label_filename, index=False)
-	print('cannon labels saved to {}'.format(cannon_label_filename))
+	# # compute Cannon labels
+	# cannon_label_df = compute_cks_cannon_labels(model, order_numbers, filter_type)
+	# cannon_label_filename = model_path + 'cannon_labels.csv'
+	# cannon_label_df.to_csv(cannon_label_filename, index=False)
+	# print('cannon labels saved to {}'.format(cannon_label_filename))
 
-	# generate one-to-one plots
-	print('generating one-to-one diagnostic plots of CKS sample')  
-	plot_one2one(cannon_label_df, model_suffix)
-	figure_path = model_path + 'one2one.png'
-	print('one-to-one plot saved to saved to {}'.format(figure_path))
-	plt.savefig(figure_path, dpi=300, bbox_inches='tight')
+	# # generate one-to-one plots
+	# print('generating one-to-one diagnostic plots of CKS sample')  
+	# plot_one2one(cannon_label_df, model_suffix)
+	# figure_path = model_path + 'one2one.png'
+	# print('one-to-one plot saved to saved to {}'.format(figure_path))
+	# plt.savefig(figure_path, dpi=300, bbox_inches='tight')
 
  # ====================== train individual cannon models ============================================
 
 # for testing purposes
 for order_n in range(1, 2):
-	train_cannon_model([order_n], 'order{}_dwt'.format(order_n))
-	#train_cannon_model([order_n], 'order{}_original'.format(order_n), filter_type='original')
+	train_cannon_model([order_n], 'order{}_dwt_nan_vsini_0'.format(order_n))
+	#train_cannon_model([order_n], 'order{}_original_nan_vsini_removed'.format(order_n), filter_type='original')
 
 # to do: I need to fix the bug that fits the dwt spectra to the original model.
 # I think it's fixed, I'll run it to test.

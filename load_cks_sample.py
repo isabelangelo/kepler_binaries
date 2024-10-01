@@ -74,6 +74,8 @@ cks_cool_stars['sample'] = ['cks-cool'] * len(cks_cool_stars)
 
 # combine samples for training set
 cks_stars = pd.concat([cks_main_stars, cks_cool_stars], ignore_index=True)
+# remove stars with vsini>=11km/s (upper limit of specmatch training set)
+cks_stars = cks_stars.query('cks_vsini<11')
 # re-format obs ids
 cks_stars.obs_id = [i.replace(' ','') for i in cks_stars.obs_id]
 
