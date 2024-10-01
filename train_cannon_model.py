@@ -136,10 +136,11 @@ def single_order_training_data(order_idx, filter_wavelets=True):
 	sigma_list = []
 
 	# get order data for all stars in training set
-	for i in range(len(training_set_table)):
+	#for i in range(len(training_set_table)):
+	for idx, row in training_set_table.iterrows():
 
 	    # load file data
-	    row = training_set_table.iloc[i]
+	    #row = training_set_table.iloc[i]
 	    id_starname_list.append(row.source_name.replace(' ','')) # save star name for column
 
 	    # load spectrum from specmatch-emp library
@@ -199,8 +200,6 @@ training_flux_original.to_csv('{}/training_flux_original.csv'.format(df_path), i
 training_sigma_original.to_csv('{}/training_sigma_original.csv'.format(df_path), index=False)
 print('training flux and sigma pre wavelet filter saved to .csv files')
 print('total time to load training data = {} seconds'.format(time.time()-t0))
-
-import pdb;pdb.set_trace()
 
 # =============== functions to train model + save validation plots =============================
 
@@ -397,8 +396,8 @@ def train_cannon_model(order_numbers, model_suffix, filter_type='dwt',
 
 # for testing purposes
 for order_n in range(1, 2):
-	train_cannon_model([order_n], 'order{}_dwt_nan_vsini_0'.format(order_n))
-	#train_cannon_model([order_n], 'order{}_original_nan_vsini_removed'.format(order_n), filter_type='original')
+	train_cannon_model([order_n], 'order{}_dwt_nan_vsini_broadened'.format(order_n))
+	#train_cannon_model([order_n], 'order{}_original_nan_vsini_broadened'.format(order_n), filter_type='original')
 
 # to do: I need to fix the bug that fits the dwt spectra to the original model.
 # I think it's fixed, I'll run it to test.
