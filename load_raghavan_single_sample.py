@@ -1,9 +1,12 @@
 from specmatchemp.spectrum import read_fits
+from rsync_utils import *
 import pandas as pd
+import dwt
 import glob
 import os
 
-# rsync HIRES spectra of Raghavan 2010 single stars 
+# rsync HIRES spectra of Raghavan 2010 single stars ============================================== 
+
 raghavan2010_singles = pd.read_csv('./data/literature_data/Raghavan2010_singles_obs_ids.csv')
 # add row to match CKS obs_id row
 print('copying Raghavan 2010 single sample spectra from cadence')
@@ -23,7 +26,9 @@ for index, row in raghavan2010_singles.iterrows():
             run_rsync(command)
     print('copied {} b,r,i chip spectra to ./data/raghavan2010_singles_spectra/'.format(row.resolvable_name))
 
-# shift and register spectra with specmatch-emp
+
+# shift and register spectra with specmatch-emp ========================================================
+
 print('shifting and registering Raghavan 2010 single spectra for binary model validation')
 raghavan2010_spectrum_ids = [i[37:-5] for i in glob.glob('./data/raghavan2010_singles_spectra/ij*.fits')]
 for spectrum_id in raghavan2010_spectrum_ids:
@@ -40,10 +45,13 @@ for spectrum_id in raghavan2010_spectrum_ids:
 		os.system(command)
 
 
-# store wavelet-filtered fluxes
+# store wavelet-filtered fluxes ==================================================================
+
 df_path = './data/spectrum_dataframes'
 shifted_path = './data/raghavan2010_singles_spectra_shifted'
 print('saving wavelet-filtered flux, sigma to dataframes')
+flux_df = pd.DataFrame()
+sigma_df = pd.DataFrame()
 for order_n in range(1,17):    
 	# lists to store data
 	id_starname_list = []
@@ -71,7 +79,7 @@ for order_n in range(1,17):
 		# process for Cannon training
 		flux_norm, sigma_norm = dwt.load_spectrum(
 		    rescaled_order, 
-		    filter_wavelets)
+		    True) # perform wavelet filtering
 
 		# save to lists
 		flux_list.append(flux_norm)

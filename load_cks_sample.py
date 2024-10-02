@@ -2,10 +2,10 @@
 Loads CKS sample flux + labels
 for single star Cannon model validation
 """
-from specmatchemp.spectrum import read_hires_fits
 from specmatchemp.spectrum import read_fits
 from astropy.table import Table
 from astropy.io import fits
+from rsync_utils import *
 import specmatchemp.library
 import dwt
 import pandas as pd
@@ -33,9 +33,6 @@ max_teff = cks_main_stars['Teff'].min()
 cks_cool_stars = cks_cool_stars.query('smsyn_teff<@max_teff & smsyn_teff>@min_teff')
 print('{} stars from CKS-cool with Teff={}-{}K'.format(
     len(cks_cool_stars), min_teff, max_teff))
-
-# store password for rsync
-password = "CPS<3RVs"
 
 # rename columns of CKS sample
 cks_cols_to_keep = ['Name', 'Obs','Teff', 'e_Teff', 'logg', 'e_logg', \
@@ -88,14 +85,6 @@ print('table with CKS + CKS-cool stars ({} total) saved to {}'.format(
 
 # =================== transfer spectra from cadence =========================
 
-# # function to run rsync command
-# def run_rsync(command):
-#     # run the command using pexpect
-#     program = pexpect.spawn(command)
-#     program.expect("observer@cadence.caltech.edu's password:")
-#     program.sendline(password)
-#     program.expect(pexpect.EOF)
-
 # # copy over CKS stars
 # for index, row in cks_stars.iterrows():
 #     # filenames for rsync command
@@ -126,10 +115,6 @@ print('table with CKS + CKS-cool stars ({} total) saved to {}'.format(
 #     os.system(command)
 
 # ================== wavelet-filter + store spectra =============================================
-
-# load original wavelength data
-original_wav_file = read_hires_fits('./data/cks-spectra/rj122.742.fits') # KOI-1 original r chip file
-original_wav_data = original_wav_file.w[:,:-1] # require even number of elements
 
 # store flux, sigma for all orders with both original and filtered flux
 def cks_sample_data(filter_wavelets):

@@ -24,6 +24,11 @@ training_set_table = lib.library_params.copy()
 # snr cutoff for training set
 training_set_table = training_set_table.query('snr>150')
 
+# TEMPORARY: temperature cutoff to test slow rotators
+training_set_table = training_set_table.query('Teff<=5300')
+# remove outlier GJ570B (candidate binary)
+training_set_table = training_set_table[~training_set_table['source_name'].str.contains('GJ570')]
+
 # =============== handle vsini upper limits =========================================
 
 # add ladder of broadened spectra for rows with vsini upper limits
@@ -203,13 +208,6 @@ print('total time to load training data = {} seconds'.format(time.time()-t0))
 
 # =============== functions to train model + save validation plots =============================
 
-# CKS labels + spectra for model validation
-cks_label_df = pd.read_csv('./data/label_and_metric_dataframes/cks_labels.csv')
-cks_flux_dwt_df = pd.read_csv('./data/spectrum_dataframes/cks_flux_dwt.csv')
-cks_sigma_dwt_df = pd.read_csv('./data/spectrum_dataframes/cks_sigma_dwt.csv')
-cks_flux_original_df = pd.read_csv('./data/spectrum_dataframes/cks_flux_original.csv')
-cks_sigma_original_df = pd.read_csv('./data/spectrum_dataframes/cks_sigma_original.csv')
-
 # file with order stats
 order_data_path = './data/cannon_models/rchip_order_stats.csv'
 
@@ -223,7 +221,7 @@ if os.path.exists(order_data_path)==False:
 def plot_label_one2one(x, y):
 	"""
 	Computes the RMS and bias associated with the Cannon-inferred
-	CKS stellar labels, used to generate one-to-one plots.
+	stellar labels, used to generate one-to-one plots.
 	"""
 	diff = y - x
 	bias = np.round(np.mean(diff), 3)
@@ -236,38 +234,38 @@ def plot_label_one2one(x, y):
 
 def plot_one2one(cannon_label_df, model_suffix):
 	"""
-	Generates a one-to-one plot of the known CKS labels
-	and Cannon-inferred labels for the CKS vallidation sample,
+	Generates a one-to-one plot of the known training labels
+	and Cannon-inferred labels for the training vallidation sample,
 	as computed by a particular Cannon model of interest.
 	"""
 	plt.figure(figsize=(15,3))
 	plt.subplot(141)
 	teff_bias, teff_rms = plot_label_one2one(
-		cannon_label_df.cks_teff, 
+		cannon_label_df.smemp_teff, 
 		cannon_label_df.cannon_teff)
 	plt.plot([4000,7000],[4000,7000],'b-')
-	plt.xlabel('CKS Teff (K)');plt.ylabel('Cannon Teff (K)')
+	plt.xlabel('specmatch library Teff (K)');plt.ylabel('Cannon Teff (K)')
 
 	plt.subplot(142)
 	logg_bias, logg_rms = plot_label_one2one(
-		cannon_label_df.cks_logg, 
+		cannon_label_df.smemp_logg, 
 		cannon_label_df.cannon_logg)
 	plt.plot([2.3,5],[2.3,5],'b-')
-	plt.xlabel('CKS logg (dex)');plt.ylabel('Cannon logg (dex)')
+	plt.xlabel('specmatch library logg (dex)');plt.ylabel('Cannon logg (dex)')
 
 	plt.subplot(143)
 	feh_bias, feh_rms = plot_label_one2one(
-		cannon_label_df.cks_feh, 
+		cannon_label_df.smemp_feh, 
 		cannon_label_df.cannon_feh)
 	plt.plot([-1.1,0.6],[-1.1,0.6],'b-')
-	plt.xlabel('CKS Fe/H (dex)');plt.ylabel('Cannon Fe/H (dex)')
+	plt.xlabel('specmatch library Fe/H (dex)');plt.ylabel('Cannon Fe/H (dex)')
 
 	plt.subplot(144)
 	vsini_bias, vsini_rms = plot_label_one2one(
-		cannon_label_df.cks_vsini, 
+		cannon_label_df.smemp_vsini, 
 		cannon_label_df.cannon_vsini)
 	plt.plot([0,20],[0,20], 'b-')
-	plt.xlabel('CKS vsini (km/s)');plt.ylabel('Cannon vsini (km/s)')
+	plt.xlabel('specmatch library vsini (km/s)');plt.ylabel('Cannon vsini (km/s)')
 
 	# save stats to dataframe
 	keys = ['model','label','bias','rms']
@@ -281,11 +279,13 @@ def plot_one2one(cannon_label_df, model_suffix):
 			[existing_order_data, order_data])
 	updated_order_data.to_csv(order_data_path, index=False)
 
-
-def compute_cks_cannon_labels(cannon_model, order_numbers, filter_type):
+def compute_training_cannon_labels(cannon_model, order_numbers, filter_type):
 	"""
-	Computes Cannon-inferred stellar labels for CKS validation
-	sample. 
+	Computes Cannon-inferred stellar labels for training set using the 
+	Cannon's test step. 
+	note: This is not a formal model validation so it doesn't use 
+	leave-one-out validation, but it may be updated in the future
+	to perform leave-one-out.
 
 	Args:
 		cannon_model (tc.CannonModel): cannon model of interest
@@ -294,28 +294,28 @@ def compute_cks_cannon_labels(cannon_model, order_numbers, filter_type):
 	"""
 	# names of keys + metrics to store
 	labels_to_plot = ['teff', 'logg', 'feh', 'vsini']
-	cks_keys = ['cks_'+i for i in labels_to_plot]
-	cannon_keys = [i.replace('cks', 'cannon') for i in cks_keys]
-	keys = ['id_starname'] + cks_keys + cannon_keys + ['fit_chisq','training_density']
+	smemp_keys = ['smemp_'+i for i in labels_to_plot]
+	cannon_keys = [i.replace('smemp', 'cannon') for i in smemp_keys]
+	keys = ['id_starname'] + smemp_keys + cannon_keys + ['fit_chisq','training_density']
 
-	# load CKS flux, sigma at orders of interest
+	# load training flux, sigma at orders of interest
 	if filter_type=='dwt':
-		cks_flux = cks_flux_dwt_df[cks_flux_dwt_df['order_number'].isin(order_numbers)]
-		cks_sigma = cks_sigma_dwt_df[cks_sigma_dwt_df['order_number'].isin(order_numbers)]
+		training_flux = training_flux_dwt[training_flux_dwt['order_number'].isin(order_numbers)]
+		training_sigma = training_sigma_dwt[training_sigma_dwt['order_number'].isin(order_numbers)]
 	elif filter_type=='original':
-		cks_flux = cks_flux_original_df[cks_flux_original_df['order_number'].isin(order_numbers)]
-		cks_sigma = cks_sigma_original_df[cks_sigma_original_df['order_number'].isin(order_numbers)]
+		training_flux = training_flux_original[training_flux_original['order_number'].isin(order_numbers)]
+		training_sigma = training_sigma_original[training_sigma_original['order_number'].isin(order_numbers)]
 
-	# compute cannon labels for CKS stars + store to dataframe
+	# compute cannon labels for training stars + store to dataframe
 	cannon_label_data = []
-	for idx, row in cks_label_df.iterrows():
+	for idx, row in training_set_table.iterrows():
 	    spec = spectrum.Spectrum(
-	            cks_flux[row.id_starname], 
-	            cks_sigma[row.id_starname], 
+	            training_flux[row.id_starname], 
+	            training_sigma[row.id_starname], 
 	            order_numbers, 
 	            cannon_model)
 	    spec.fit_single_star()
-	    values = [row.id_starname] + row[cks_keys].values.tolist() \
+	    values = [row.id_starname] + row[smemp_keys].values.tolist() \
 	            + spec.fit_cannon_labels.tolist() + [spec.fit_chisq, spec.training_density]
 	    cannon_label_data.append(dict(zip(keys, values)))
 
@@ -379,24 +379,25 @@ def train_cannon_model(order_numbers, model_suffix, filter_type='dwt',
 	model.write(model_filename, include_training_set_spectra=True, overwrite=True)
 	print('model written to {}'.format(model_filename))
 
-	# # compute Cannon labels
-	# cannon_label_df = compute_cks_cannon_labels(model, order_numbers, filter_type)
-	# cannon_label_filename = model_path + 'cannon_labels.csv'
-	# cannon_label_df.to_csv(cannon_label_filename, index=False)
-	# print('cannon labels saved to {}'.format(cannon_label_filename))
+	# save one-to-one plot
+	cannon_label_df = compute_training_cannon_labels(model, order_numbers, filter_type)
+	cannon_label_filename = model_path + 'cannon_labels.csv'
+	cannon_label_df.to_csv(cannon_label_filename, index=False)
+	print('cannon labels saved to {}'.format(cannon_label_filename))
 
-	# # generate one-to-one plots
-	# print('generating one-to-one diagnostic plots of CKS sample')  
-	# plot_one2one(cannon_label_df, model_suffix)
-	# figure_path = model_path + 'one2one.png'
-	# print('one-to-one plot saved to saved to {}'.format(figure_path))
-	# plt.savefig(figure_path, dpi=300, bbox_inches='tight')
+	# generate one-to-one plots
+	print('generating one-to-one diagnostic plots of training set')
+	plot_one2one(cannon_label_df, model_suffix)
+	figure_path = model_path + 'one2one.png'
+	print('one-to-one plot saved to saved to {}'.format(figure_path))
+	plt.savefig(figure_path, dpi=300, bbox_inches='tight')
 
  # ====================== train individual cannon models ============================================
 
 # for testing purposes
 for order_n in range(1, 2):
-	train_cannon_model([order_n], 'order{}_dwt_nan_vsini_broadened'.format(order_n))
+	#train_cannon_model([order_n], 'order{}_dwt_nan_vsini_broadened'.format(order_n))
+	train_cannon_model([order_n], 'order{}_dwt_nan_vsini_broadened_cool'.format(order_n))
 	#train_cannon_model([order_n], 'order{}_original_nan_vsini_broadened'.format(order_n), filter_type='original')
 
 # to do: I need to fix the bug that fits the dwt spectra to the original model.
