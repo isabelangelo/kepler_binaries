@@ -42,20 +42,19 @@ def broadened_vsini_row(idx, vsini):
     new_vsini_row['broadened_vsini']=True
     new_vsini_row['source_name'] = new_vsini_row['source_name']+'-'+str(vsini)
     return new_vsini_row
+
 rows_with_broadening = []
 for idx in range(len(training_set_table)):
-	new_row = training_set_table.iloc[idx] # original target information
-
 	if idx in indices_to_insert:
 		# Add new rows with vsini=3,5,7km/s
+		# also inflate noise so Cannon doesn't learn original errors
+		rows_with_broadening.append(broadened_vsini_row(idx, 0)) # add noise
 		rows_with_broadening.append(broadened_vsini_row(idx, 3))
 		rows_with_broadening.append(broadened_vsini_row(idx, 5))
 		rows_with_broadening.append(broadened_vsini_row(idx, 7))
-		# rename current row to flag vsini=0
-		new_row['source_name'] = new_row['source_name']+'-0'
+	else:
+		rows_with_broadening.append(training_set_table.iloc[idx])
 
-	# Keep the original row
-	rows_with_broadening.append(new_row)  
 # re-write training table with broadened vsini stars
 training_set_table = pd.DataFrame(rows_with_broadening)
 
@@ -63,22 +62,36 @@ def broaden(vsini, spec):
     """
     Applies a broadening kernel to the given spectrum (or error)
     Adopted from specmatch.Match() class from Yee & Petigura 2018
+    
+    note: if vsini=0, spectrum is not broadened, but its 
+    errors are inflated to avoid correlated noise between 
+    spectrum + its broadened counterparts
 
     Args:
         vsini (float): vsini to determine width of broadening
-        spec (Spectrum): spectrum to broaden
+        spec (specmatchemp.spectrum.Spectrum): spectrum to broaden
     Returns:
-        broadened (Spectrum): Broadened spectrum
+        broadened (specmatchemp.spectrum.Spectrum): Broadened spectrum
     """
-    SPEED_OF_LIGHT = 2.99792e5
-    dv = (spec.w[1]-spec.w[0])/spec.w[0]*SPEED_OF_LIGHT
-    n = 151     # fixed number of points in the kernel
-    varr, kernel = specmatchemp.kernels.rot(n, dv, vsini)
-    # broadened = signal.fftconvolve(spec, kernel, mode='same')
 
+    # copy original spectrum
     broadened_spec = spec.copy()
-    broadened_spec.s = convolve1d(broadened_spec.s, kernel)
-    broadened_spec.serr = convolve1d(broadened_spec.serr, kernel)
+
+    # add 1% flux errors
+    broadened_spec.serr += 0.01
+    broadened_spec.s += np.random.normal(0, 0.01, len(broadened_spec.s))
+    
+    # broaden if vsini=0
+    if vsini != 0:
+    	# kernel for line broadening
+	    SPEED_OF_LIGHT = 2.99792e5
+	    dv = (spec.w[1]-spec.w[0])/spec.w[0]*SPEED_OF_LIGHT
+	    n = 151     # fixed number of points in the kernel
+	    varr, kernel = specmatchemp.kernels.rot(n, dv, vsini)
+
+	    # broadened spectrum
+	    broadened_spec.s = convolve1d(broadened_spec.s, kernel)
+	    broadened_spec.serr = convolve1d(broadened_spec.serr, kernel)
 
     return broadened_spec
 
@@ -95,9 +108,10 @@ training_set_table = training_set_table.astype(
 training_set_table['id_starname'] = [i.replace(' ','') for i in training_set_table.source_name]
 
 # split training set into cool, hot stars for piecewise model
+# remove stars with broadened vsini from hot star model
 training_set_table_cool = training_set_table.query('smemp_teff<=5300')
-training_set_table_hot = training_set_table.query('smemp_teff>5300')
 training_set_table_cool.to_csv('./data/label_and_metric_dataframes/training_labels_cool.csv', index=None)
+training_set_table_hot = training_set_table.query('(smemp_teff>5300) & (broadened_vsini==False)')
 training_set_table_hot.to_csv('./data/label_and_metric_dataframes/training_labels_hot.csv', index=None)
 
 # store columns with labels for training
@@ -206,17 +220,17 @@ import time
 t0=time.time()
 
 # wavelet-filtered flux + flux errors, hot + cool stars	
-# save_training_data(training_set_table_hot, 'dwt_hot', filter_wavelets=True)
-# print('wavelet-filtered training flux and sigma for hot stars saved to .csv files')	
-# save_training_data(training_set_table_cool, 'dwt_cool', filter_wavelets=True)
-# print('wavelet-filtered training flux and sigma for cool stars saved to .csv files')
+save_training_data(training_set_table_hot, 'dwt_hot', filter_wavelets=True)
+print('wavelet-filtered training flux and sigma for hot stars saved to .csv files')	
+save_training_data(training_set_table_cool, 'dwt_cool', filter_wavelets=True)
+print('wavelet-filtered training flux and sigma for cool stars saved to .csv files')
 
-# # original flux + flux errors, hot + cool stars		
-# save_training_data(training_set_table_hot, 'original_hot', filter_wavelets=False)
-# print('wavelet-filtered training flux and sigma for hot stars saved to .csv files')
-# save_training_data(training_set_table_cool, 'original_cool', filter_wavelets=False)
-# print('wavelet-filtered training flux and sigma for cool stars saved to .csv files')
-# print('total time to load training data = {} seconds'.format(time.time()-t0))
+# original flux + flux errors, hot + cool stars		
+save_training_data(training_set_table_hot, 'original_hot', filter_wavelets=False)
+print('wavelet-filtered training flux and sigma for hot stars saved to .csv files')
+save_training_data(training_set_table_cool, 'original_cool', filter_wavelets=False)
+print('wavelet-filtered training flux and sigma for cool stars saved to .csv files')
+print('total time to load training data = {} seconds'.format(time.time()-t0))
 
 # =============== functions to train model + save validation plots =============================
 
@@ -229,96 +243,8 @@ if os.path.exists(order_data_path)==False:
 	# write the DataFrame to a CSV file
 	empty_order_df.to_csv(order_data_path, index=False)
 
-def train_cannon_model(order_numbers, model_suffix, piecewise_component,
-	filter_type='dwt', save_training_data=False):
-	"""
-	Trains a Cannon model using all the orders specified in order_numbers
-	order_numbers (list): order numbers to train on, 1-16 for HIRES r chip
-	                    e.g., [1,2,6,15,16]
-	model_suffix (str): file ending for Cannon model (for example, 'order4' 
-						will save data to ./data/cannon_models/order4/)
-	piecewise_component (str): 'hot' or 'cool', determines which subset
-						to train the model on (cool for Teff<=5300K, 
-						hot for Teff>5300K)
-	filter_type (str): if 'dwt', model is trained on wavelet filtered data.
-	                   if 'original', model is trained on SpecMatch-Emp output data.
-	save_training_data (bool): if True, saves dataframes of training flux + sigma
-	                    to ./data/cannon_training_data
-	"""
-	# determine piecewise label dataframe
-	if piecewise_component == 'hot':
-		training_set = training_set_hot
-	elif piecewise_component == 'cool':
-		training_set = training_set_cool
-
-	# determine dataframe that contains training data
-	flux_df = pd.read_csv('{}/training_flux_{}_{}.csv'.format(
-		df_path, filter_type, piecewise_component))
-	sigma_df = pd.read_csv('{}/training_sigma_{}_{}.csv'.format(
-		df_path, filter_type, piecewise_component))
-
-	# store training flux, sigma for selected orders
-	# note: for flux, sigma, we index at 1 to exclude order_number column
-	training_flux_df = flux_df[flux_df['order_number'].isin(order_numbers)]
-	training_sigma_df = sigma_df[sigma_df['order_number'].isin(order_numbers)]
-
-	normalized_flux = training_flux_df.to_numpy()[:,1:].T
-	normalized_sigma = training_sigma_df.to_numpy()[:,1:].T
-	normalized_ivar = 1/normalized_sigma**2
-
-	# save training data to a .csv
-	if save_training_data:
-	    flux_path = '{}training_flux_{}.csv'.format(
-	        training_data_path,model_suffix)
-	    sigma_path = '{}training_sigma_{}.csv'.format(
-	        training_data_path,model_suffix)
-	    training_flux_df.to_csv(flux_path, index=False)
-	    training_sigma_df.to_csv(sigma_path, index=False)
-
-	# Create a vectorizer that defines our model form.
-	vectorizer = tc.vectorizer.PolynomialVectorizer(
-		['smemp_teff', 'smemp_logg', 'smemp_feh','smemp_vsini'], 2)
-
-	# Create the model that will run in parallel using all available cores.
-	model = tc.CannonModel(training_set, normalized_flux, normalized_ivar,
-	                       vectorizer=vectorizer)
-
-	# train and store model
-	model_path = './data/cannon_models/{}/'.format(model_suffix)
-	os.mkdir(model_path)
-	model_filename = model_path + 'cannon_model.model'
-	model.train()
-	print('finished training cannon model')
-	model.write(model_filename, include_training_set_spectra=True, overwrite=True)
-	print('model written to {}'.format(model_filename))
-
-	# # save one-to-one plot
-	# cannon_label_df = compute_training_cannon_labels(model, order_numbers, filter_type)
-	# cannon_label_filename = model_path + 'cannon_labels.csv'
-	# cannon_label_df.to_csv(cannon_label_filename, index=False)
-	# print('cannon labels saved to {}'.format(cannon_label_filename))
-
-	# # generate one-to-one plots
-	# print('generating one-to-one diagnostic plots of training set')
-	# plot_one2one(cannon_label_df, model_suffix)
-	# figure_path = model_path + 'one2one.png'
-	# print('one-to-one plot saved to saved to {}'.format(figure_path))
-	# plt.savefig(figure_path, dpi=300, bbox_inches='tight')
-
-# TEMPORARY (for testing):
-# train piecewise cannon models on order 1
-# then I'll write it into spectrum.Spectrum
-# and then I'll generate a one2one plot in a jupyter notebook.
-# when this is done running i need to uncomment the part that generates the 
-# training data.
-for order_n in range(1, 2):
-	train_cannon_model([order_n], 'order{}_dwt_cool'.format(order_n), 'cool')
-	train_cannon_model([order_n], 'order{}_dwt_hot'.format(order_n), 'hot')
-
-import pdb;pdb.set_trace()
-
-
-def compute_training_cannon_labels(cannon_model, order_numbers, filter_type):
+def compute_training_cannon_labels(cannon_model, order_numbers, 
+	piecewise_component, filter_type):
 	"""
 	Computes Cannon-inferred stellar labels for training set using the 
 	Cannon's test step. 
@@ -330,6 +256,11 @@ def compute_training_cannon_labels(cannon_model, order_numbers, filter_type):
 		cannon_model (tc.CannonModel): cannon model of interest
 		order_numbers (list): HIRES chip order numbers model was 
 				trained on (e.g., [1,2,4,5]).
+		piecewise_component (str): 'hot' or 'cool', determines which subset
+				to train the model on (cool for Teff<=5300K, 
+				hot for Teff>5300K)
+		filter_type (str): if 'dwt', model is trained on wavelet filtered data.
+				if 'original', model is trained on SpecMatch-Emp output data.
 	"""
 	# names of keys + metrics to store
 	labels_to_plot = ['teff', 'logg', 'feh', 'vsini']
@@ -337,13 +268,22 @@ def compute_training_cannon_labels(cannon_model, order_numbers, filter_type):
 	cannon_keys = [i.replace('smemp', 'cannon') for i in smemp_keys]
 	keys = ['id_starname'] + smemp_keys + cannon_keys + ['fit_chisq','training_density']
 
-	# load training flux, sigma at orders of interest
-	if filter_type=='dwt':
-		training_flux = training_flux_dwt[training_flux_dwt['order_number'].isin(order_numbers)]
-		training_sigma = training_sigma_dwt[training_sigma_dwt['order_number'].isin(order_numbers)]
-	elif filter_type=='original':
-		training_flux = training_flux_original[training_flux_original['order_number'].isin(order_numbers)]
-		training_sigma = training_sigma_original[training_sigma_original['order_number'].isin(order_numbers)]
+	# new code
+	# determine piecewise label dataframe
+	if piecewise_component == 'hot':
+		training_set_table = training_set_table_hot
+	elif piecewise_component == 'cool':
+		training_set_table = training_set_table_cool
+
+	# determine dataframe that contains training data
+	training_flux = pd.read_csv('{}/training_flux_{}_{}.csv'.format(
+		df_path, filter_type, piecewise_component))
+	training_sigma = pd.read_csv('{}/training_sigma_{}_{}.csv'.format(
+		df_path, filter_type, piecewise_component))
+
+	# extract order numbers
+	training_flux = training_flux[training_flux['order_number'].isin(order_numbers)]
+	training_sigma = training_sigma[training_sigma['order_number'].isin(order_numbers)]
 
 	# compute cannon labels for training stars + store to dataframe
 	cannon_label_data = []
@@ -423,14 +363,104 @@ def plot_one2one(cannon_label_df, model_suffix):
 			[existing_order_data, order_data])
 	updated_order_data.to_csv(order_data_path, index=False)
 
+def train_cannon_model(order_numbers, model_suffix, piecewise_component,
+	filter_type='dwt', save_training_data=False):
+	"""
+	Trains a Cannon model using all the orders specified in order_numbers
+	order_numbers (list): order numbers to train on, 1-16 for HIRES r chip
+	                    e.g., [1,2,6,15,16]
+	model_suffix (str): file ending for Cannon model (for example, 'order4' 
+						will save data to ./data/cannon_models/order4/)
+	piecewise_component (str): 'hot' or 'cool', determines which subset
+						to train the model on (cool for Teff<=5300K, 
+						hot for Teff>5300K)
+	filter_type (str): if 'dwt', model is trained on wavelet filtered data.
+	                   if 'original', model is trained on SpecMatch-Emp output data.
+	save_training_data (bool): if True, saves dataframes of training flux + sigma
+	                    to ./data/cannon_training_data
+	"""
+	# determine piecewise label dataframe
+	if piecewise_component == 'hot':
+		training_set = training_set_hot
+	elif piecewise_component == 'cool':
+		training_set = training_set_cool
+
+	# determine dataframe that contains training data
+	flux_df = pd.read_csv('{}/training_flux_{}_{}.csv'.format(
+		df_path, filter_type, piecewise_component))
+	sigma_df = pd.read_csv('{}/training_sigma_{}_{}.csv'.format(
+		df_path, filter_type, piecewise_component))
+
+	# store training flux, sigma for selected orders
+	# note: for flux, sigma, we index at 1 to exclude order_number column
+	training_flux_df = flux_df[flux_df['order_number'].isin(order_numbers)]
+	training_sigma_df = sigma_df[sigma_df['order_number'].isin(order_numbers)]
+
+	normalized_flux = training_flux_df.to_numpy()[:,1:].T
+	normalized_sigma = training_sigma_df.to_numpy()[:,1:].T
+	normalized_ivar = 1/normalized_sigma**2
+
+	# save training data to a .csv
+	if save_training_data:
+	    flux_path = '{}training_flux_{}.csv'.format(
+	        training_data_path,model_suffix)
+	    sigma_path = '{}training_sigma_{}.csv'.format(
+	        training_data_path,model_suffix)
+	    training_flux_df.to_csv(flux_path, index=False)
+	    training_sigma_df.to_csv(sigma_path, index=False)
+
+	# Create a vectorizer that defines our model form.
+	vectorizer = tc.vectorizer.PolynomialVectorizer(
+		['smemp_teff', 'smemp_logg', 'smemp_feh','smemp_vsini'], 2)
+
+	# Create the model that will run in parallel using all available cores.
+	model = tc.CannonModel(training_set, normalized_flux, normalized_ivar,
+	                       vectorizer=vectorizer)
+
+	# train and store model
+	model_path = './data/cannon_models/{}/'.format(model_suffix)
+	os.mkdir(model_path)
+	model_filename = model_path + 'cannon_model.model'
+	model.train()
+	print('finished training cannon model')
+	model.write(model_filename, include_training_set_spectra=True, overwrite=True)
+	print('model written to {}'.format(model_filename))
+
+	# save one-to-one plot
+	cannon_label_df = compute_training_cannon_labels(
+		model, 
+		order_numbers, 
+		piecewise_component, 
+		filter_type)
+
+	cannon_label_filename = model_path + 'cannon_labels.csv'
+	cannon_label_df.to_csv(cannon_label_filename, index=False)
+	print('cannon labels saved to {}'.format(cannon_label_filename))
+
+	# generate one-to-one plots
+	print('generating one-to-one diagnostic plots of training set')
+	plot_one2one(cannon_label_df, model_suffix)
+	figure_path = model_path + 'one2one.png'
+	print('one-to-one plot saved to saved to {}'.format(figure_path))
+	plt.savefig(figure_path, dpi=300, bbox_inches='tight')
+
 
  # ====================== train individual cannon models ============================================
 
 # for testing purposes
 for order_n in range(1, 2):
-	#train_cannon_model([order_n], 'order{}_dwt_nan_vsini_broadened'.format(order_n))
-	train_cannon_model([order_n], 'order{}_dwt_nan_vsini_broadened_cool'.format(order_n))
-	#train_cannon_model([order_n], 'order{}_original_nan_vsini_broadened'.format(order_n), filter_type='original')
+	train_cannon_model(
+		[order_n], 
+		'order{}_dwt_nan_vsini_removed_hot'.format(order_n), 
+		'hot')
+	# train_cannon_model(
+	# 	[order_n], 
+	# 	'order{}_dwt_nan_vsini_removed_cool'.format(order_n),
+	# 	'cool')
+	# train_cannon_model(
+	# 	[order_n], 
+	# 	'order{}_original_nan_vsini_broadened'.format(order_n), 
+	# 	filter_type='original')
 
 
 
