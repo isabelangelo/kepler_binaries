@@ -2,13 +2,13 @@ from specmatchemp.spectrum import read_hires_fits
 from scipy.ndimage import convolve1d
 from astropy.table import Table
 from astropy.io import fits
+from training_utils import *
 import matplotlib.pyplot as plt
 import specmatchemp.library
 import specmatchemp.kernels
 import thecannon as tc
 import pandas as pd
 import numpy as np
-# import spectrum
 import dwt
 import os
 
@@ -24,8 +24,9 @@ training_set_table = lib.library_params.copy()
 # snr cutoff for training set
 training_set_table = training_set_table.query('snr>100')
 
-# remove outlier GJ570B (candidate binary)
+# remove outliers GJ570B + Gl 896A (candidate binaries)
 training_set_table = training_set_table[~training_set_table['source_name'].str.contains('GJ570')]
+training_set_table = training_set_table[~training_set_table['source_name'].str.contains('Gl 896A')]
 
 # =============== handle vsini upper limits =========================================
 
@@ -219,18 +220,18 @@ def save_training_data(training_set_table, model_suffix, filter_wavelets=True):
 import time
 t0=time.time()
 
-# # wavelet-filtered flux + flux errors, hot + cool stars	
-# save_training_data(training_set_table_hot, 'dwt_hot', filter_wavelets=True)
-# print('wavelet-filtered training flux and sigma for hot stars saved to .csv files')	
-# save_training_data(training_set_table_cool, 'dwt_cool', filter_wavelets=True)
-# print('wavelet-filtered training flux and sigma for cool stars saved to .csv files')
+# wavelet-filtered flux + flux errors, hot + cool stars	
+#save_training_data(training_set_table_hot, 'dwt_hot', filter_wavelets=True)
+print('wavelet-filtered training flux and sigma for hot stars saved to .csv files')	
+#save_training_data(training_set_table_cool, 'dwt_cool', filter_wavelets=True)
+print('wavelet-filtered training flux and sigma for cool stars saved to .csv files')
 
-# # original flux + flux errors, hot + cool stars		
-# save_training_data(training_set_table_hot, 'original_hot', filter_wavelets=False)
-# print('wavelet-filtered training flux and sigma for hot stars saved to .csv files')
-# save_training_data(training_set_table_cool, 'original_cool', filter_wavelets=False)
-# print('wavelet-filtered training flux and sigma for cool stars saved to .csv files')
-# print('total time to load training data = {} seconds'.format(time.time()-t0))
+# original flux + flux errors, hot + cool stars		
+#save_training_data(training_set_table_hot, 'original_hot', filter_wavelets=False)
+print('wavelet-filtered training flux and sigma for hot stars saved to .csv files')
+#save_training_data(training_set_table_cool, 'original_cool', filter_wavelets=False)
+print('wavelet-filtered training flux and sigma for cool stars saved to .csv files')
+print('total time to load training data = {} seconds'.format(time.time()-t0))
 
 # =============== functions to train model + save validation plots =============================
 
@@ -243,127 +244,12 @@ if os.path.exists(order_data_path)==False:
 	# write the DataFrame to a CSV file
 	empty_order_df.to_csv(order_data_path, index=False)
 
-def compute_training_cannon_labels(cannon_model, order_numbers, 
-	piecewise_component, filter_type):
-	"""
-	Computes Cannon-inferred stellar labels for training set using the 
-	Cannon's test step. 
-	note: This is not a formal model validation so it doesn't use 
-	leave-one-out validation, but it may be updated in the future
-	to perform leave-one-out.
-
-	Args:
-		cannon_model (tc.CannonModel): cannon model of interest
-		order_numbers (list): HIRES chip order numbers model was 
-				trained on (e.g., [1,2,4,5]).
-		piecewise_component (str): 'hot' or 'cool', determines which subset
-				to train the model on (cool for Teff<=5300K, 
-				hot for Teff>5300K)
-		filter_type (str): if 'dwt', model is trained on wavelet filtered data.
-				if 'original', model is trained on SpecMatch-Emp output data.
-	"""
-	# names of keys + metrics to store
-	labels_to_plot = ['teff', 'logg', 'feh', 'vsini']
-	smemp_keys = ['smemp_'+i for i in labels_to_plot]
-	cannon_keys = [i.replace('smemp', 'cannon') for i in smemp_keys]
-	keys = ['id_starname'] + smemp_keys + cannon_keys + ['fit_chisq']
-
-	# new code
-	# determine piecewise label dataframe
-	if piecewise_component == 'hot':
-		training_set_table = training_set_table_hot
-	elif piecewise_component == 'cool':
-		training_set_table = training_set_table_cool
-
-	# determine dataframe that contains training data
-	training_flux = pd.read_csv('{}/training_flux_{}_{}.csv'.format(
-		df_path, filter_type, piecewise_component))
-	training_sigma = pd.read_csv('{}/training_sigma_{}_{}.csv'.format(
-		df_path, filter_type, piecewise_component))
-
-	# extract order numbers
-	training_flux = training_flux[training_flux['order_number'].isin(order_numbers)]
-	training_sigma = training_sigma[training_sigma['order_number'].isin(order_numbers)]
-
-	# compute cannon labels for training stars + store to dataframe
-	cannon_label_data = []
-	for idx, row in training_set_table.iterrows():
-	    result = cannon_model.test(
-	    	training_flux[row.id_starname], 
-	    	1/training_sigma[row.id_starname]**2)
-	    values = [row.id_starname] + row[smemp_keys].values.tolist() \
-	            + result[0][0].tolist() + [result[2][0]['chi_sq']]
-	    cannon_label_data.append(dict(zip(keys, values)))
-
-	# convert label data to dataframe
-	cannon_label_df = pd.DataFrame(cannon_label_data)
-	return cannon_label_df
-
-def plot_label_one2one(x, y):
-	"""
-	Computes the RMS and bias associated with the Cannon-inferred
-	stellar labels, used to generate one-to-one plots.
-	"""
-	diff = y - x
-	bias = np.round(np.mean(diff), 3)
-	rms = np.round(np.sqrt(np.sum(diff**2)/len(diff)), 3)
-	plt.plot(x, y, 'b.')
-	plt.plot([], [], '.', color='w', 
-			label = 'rms = {}\nbias = {}'.format(rms, bias))
-	plt.legend(loc='upper left', frameon=False, labelcolor='b')
-	return bias, rms
-
-def plot_one2one(cannon_label_df, model_suffix):
-	"""
-	Generates a one-to-one plot of the known training labels
-	and Cannon-inferred labels for the training vallidation sample,
-	as computed by a particular Cannon model of interest.
-	"""
-	plt.figure(figsize=(15,3))
-	plt.subplot(141)
-	teff_bias, teff_rms = plot_label_one2one(
-		cannon_label_df.smemp_teff, 
-		cannon_label_df.cannon_teff)
-	plt.plot([4000,7000],[4000,7000],'b-')
-	plt.xlabel('specmatch library Teff (K)');plt.ylabel('Cannon Teff (K)')
-
-	plt.subplot(142)
-	logg_bias, logg_rms = plot_label_one2one(
-		cannon_label_df.smemp_logg, 
-		cannon_label_df.cannon_logg)
-	plt.plot([2.3,5],[2.3,5],'b-')
-	plt.xlabel('specmatch library logg (dex)');plt.ylabel('Cannon logg (dex)')
-
-	plt.subplot(143)
-	feh_bias, feh_rms = plot_label_one2one(
-		cannon_label_df.smemp_feh, 
-		cannon_label_df.cannon_feh)
-	plt.plot([-1.1,0.6],[-1.1,0.6],'b-')
-	plt.xlabel('specmatch library Fe/H (dex)');plt.ylabel('Cannon Fe/H (dex)')
-
-	plt.subplot(144)
-	vsini_bias, vsini_rms = plot_label_one2one(
-		cannon_label_df.smemp_vsini, 
-		cannon_label_df.cannon_vsini)
-	plt.plot([0,20],[0,20], 'b-')
-	plt.xlabel('specmatch library vsini (km/s)');plt.ylabel('Cannon vsini (km/s)')
-
-	# save stats to dataframe
-	keys = ['model','label','bias','rms']
-	order_data = pd.DataFrame(
-		(dict(zip(keys, [model_suffix, 'teff', teff_bias, teff_rms])),
-		dict(zip(keys, [model_suffix, 'logg', logg_bias, logg_rms])),
-		dict(zip(keys, [model_suffix, 'feh', feh_bias, feh_rms])),
-		dict(zip(keys, [model_suffix, 'vsini', vsini_bias, vsini_rms]))))
-	existing_order_data = pd.read_csv(order_data_path)
-	updated_order_data  = pd.concat(
-			[existing_order_data, order_data])
-	updated_order_data.to_csv(order_data_path, index=False)
-
 def train_cannon_model(order_numbers, model_suffix, piecewise_component,
-	filter_type='dwt', save_training_data=False, save_training_one2one=False):
+	filter_type='dwt'):
 	"""
 	Trains a Cannon model using all the orders specified in order_numbers
+
+	Args:
 	order_numbers (list): order numbers to train on, 1-16 for HIRES r chip
 	                    e.g., [1,2,6,15,16]
 	model_suffix (str): file ending for Cannon model (for example, 'order4' 
@@ -373,11 +259,10 @@ def train_cannon_model(order_numbers, model_suffix, piecewise_component,
 						hot for Teff>5300K)
 	filter_type (str): if 'dwt', model is trained on wavelet filtered data.
 	                   if 'original', model is trained on SpecMatch-Emp output data.
-	save_training_data (bool): if True, saves dataframes of training flux + sigma
-	                    to ./data/cannon_training_data
-	save_training_one2one (bool): if True, saves one2one plot of training set
-						for model of interest. (warning: this does not use 
-						leave-one-out, so should only be used for quick tests)
+
+	Returns:
+	model (tc.CannonModel): trained Cannon model (also saved to file
+						with location determined by model_suffix.)
 	"""
 	# determine piecewise label dataframe
 	if piecewise_component == 'hot':
@@ -400,15 +285,6 @@ def train_cannon_model(order_numbers, model_suffix, piecewise_component,
 	normalized_sigma = training_sigma_df.to_numpy()[:,1:].T
 	normalized_ivar = 1/normalized_sigma**2
 
-	# save training data to a .csv
-	if save_training_data:
-	    flux_path = '{}training_flux_{}.csv'.format(
-	        training_data_path,model_suffix)
-	    sigma_path = '{}training_sigma_{}.csv'.format(
-	        training_data_path,model_suffix)
-	    training_flux_df.to_csv(flux_path, index=False)
-	    training_sigma_df.to_csv(sigma_path, index=False)
-
 	# Create a vectorizer that defines our model form.
 	vectorizer = tc.vectorizer.PolynomialVectorizer(
 		['smemp_teff', 'smemp_logg', 'smemp_feh','smemp_vsini'], 2)
@@ -419,51 +295,59 @@ def train_cannon_model(order_numbers, model_suffix, piecewise_component,
 
 	# train and store model
 	model_path = './data/cannon_models/{}/'.format(model_suffix)
-	os.mkdir(model_path)
-	model_filename = model_path + 'cannon_model.model'
+	model_filename = model_path + '{}_cannon_model.model'.format(piecewise_component)
 	model.train()
 	print('finished training cannon model')
 	model.write(model_filename, include_training_set_spectra=True, overwrite=True)
 	print('model written to {}'.format(model_filename))
 
-	if save_training_one2one:
-		# save one-to-one plot
-		cannon_label_df = compute_training_cannon_labels(
-			model, 
-			order_numbers, 
-			piecewise_component, 
-			filter_type)
-
-		cannon_label_filename = model_path + 'cannon_labels.csv'
-		cannon_label_df.to_csv(cannon_label_filename, index=False)
-		print('cannon labels saved to {}'.format(cannon_label_filename))
-
-		# generate one-to-one plots
-		print('generating one-to-one diagnostic plots of training set')
-		plot_one2one(cannon_label_df, model_suffix)
-		figure_path = model_path + 'one2one.png'
-		print('one-to-one plot saved to saved to {}'.format(figure_path))
-		plt.savefig(figure_path, dpi=300, bbox_inches='tight')
+	return model
 
 
- # ====================== train individual cannon models ============================================
+def train_and_validate_piecewise_model(order_numbers, model_suffix, filter_type='dwt'):
 
-# for testing purposes
-for order_n in range(1, 2):
-	train_cannon_model(
-		[order_n], 
-		'order{}_dwt_nan_vsini_removed_hot'.format(order_n), 
-		'hot',
-		save_training_one2one=True)
-	train_cannon_model(
-		[order_n], 
-		'order{}_dwt_nan_vsini_broadened_cool'.format(order_n),
-		'cool',
-		save_training_one2one=True)
-	# train_cannon_model(
-	# 	[order_n], 
-	# 	'order{}_original_nan_vsini_broadened'.format(order_n), 
-	# 	filter_type='original')
+	# create directory to store models in
+	model_path = './data/cannon_models/{}/'.format(model_suffix)
+	os.mkdir(model_path)
+
+	# train hot + cool components
+	cool_cannon_model = train_cannon_model(
+		order_numbers, model_suffix, 'cool', filter_type=filter_type)
+	hot_cannon_model = train_cannon_model(
+		order_numbers, model_suffix, 'hot', filter_type=filter_type)
+
+	# compute + save Cannon output labels for training set stars
+	# using leave-one-out cross-validation
+	cannon_label_df = leave1out_label_df(
+		hot_cannon_model, 
+		cool_cannon_model, 
+		training_set_table_hot, 
+		training_set_table_cool, 
+		order_numbers)
+	df_path = './data/cannon_models/{}/cannon_labels.png'.format(model_suffix)
+	cannon_label_df.to_csv(df_path)
+
+	# create + save one-to-one plot 
+	plot_one2one(cannon_label_df, model_suffix)
+
+
+
+
+
+# I just tested order 1, so this code works, but the model doesn't perform well?
+# then uncomment save_training_data before running again.
+# then I need it to save the order stats
+# then I can run it on other orders (but first remove Gl896 from training set.)
+# I think there's a problem with the part that saves it/makes a new directory.
+# I think maybe it only needs to make the directory once.
+
+
+train_and_validate_piecewise_model([1], 'order1_dwt')
+
+
+# ====================== train individual cannon models ============================================
+
+# maybe I need a function that takes in the order numnbers only
 
 
 

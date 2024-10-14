@@ -20,19 +20,25 @@ import os
 cks_main_stars_path = './data/literature_data/Petigura2017_Table5.fits'
 cks_main_stars = Table(fits.open(cks_main_stars_path)[1].data).to_pandas()
 print(len(cks_main_stars), 'stars from CKS')
-
 # remove KOI-2864, which seems to have some RV pipeline processing errors
 cks_main_stars = cks_main_stars[~cks_main_stars.Name.str.contains('KOI-02864')]
-print(len(cks_main_stars), ' after removing KOI-02864 due to processing errors')
+print(len(cks_main_stars), ' after removing KOI-02864 due to processing errors\n')
 
 # table with CKS-cool stars
 cks_cool_stars = pd.read_csv('./data/literature_data/CKS-cool_Spectroscopic_Parameters.csv')
+print(len(cks_cool_stars), 'stars from CKS-cool')
 cks_cool_stars['id_obs'] = cks_cool_stars['id_obs'].apply(lambda x: 'r' + x) # rename to match cks stars
-min_teff = 4200 # lowest Teff where Cannon quadratic assumption holds
-max_teff = cks_main_stars['Teff'].min()
-cks_cool_stars = cks_cool_stars.query('smsyn_teff<@max_teff & smsyn_teff>@min_teff')
-print('{} stars from CKS-cool with Teff={}-{}K'.format(
-    len(cks_cool_stars), min_teff, max_teff))
+# remove duplciate entries, keeping the observation with highest SNR
+cks_cool_stars = cks_cool_stars.sort_values(by=['id_name','obs_counts'],ascending=[True,False])
+cks_cool_stars = cks_cool_stars.drop_duplicates(subset='id_name',keep='first')
+print(len(cks_cool_stars), 'after removing duplicate entries (kept highest SNR)')
+ # remove KOI01871, since its already in CKS sample
+# cks_cool_stars = cks_cool_stars[cks_cool_stars.id_name!='K01871']
+
+# TEMPORARY: remove stars with large smsyn/smemp Teff discrepancy
+import pdb;pdb.set_trace()
+cks_cool_stars = cks_cool_stars.query('abs(smemp_teff-smsyn_teff)<100')
+print(len(cks_cool_stars), 'after removing stars with large smemp/smsyn Teff discrepancy')
 
 # rename columns of CKS sample
 cks_cols_to_keep = ['Name', 'Obs','Teff', 'e_Teff', 'logg', 'e_logg', \
@@ -52,11 +58,12 @@ cks_main_stars = cks_main_stars[cks_cols_to_keep].rename(
 cks_main_stars['sample'] = ['cks'] * len(cks_main_stars)
 # re-format star names to be consistent with filenames
 cks_main_stars.id_starname = [i.replace('KOI-', 'K').replace(' ', '') for i in cks_main_stars.id_starname]
+cks_main_stars.obs_id = [i.replace(' ','') for i in cks_main_stars.obs_id.to_numpy()]
 
 # rename columns of CKS-cool
 cks_cool_cols_to_keep = ['id_name', 'id_obs','smsyn_teff', 'smsyn_teff_err', 'smsyn_logg', \
         'smsyn_logg_err', 'smsyn_fe', 'smsyn_fe_err','smsyn_vsini']
-cks_cool_stars = cks_cool_stars[cks_cool_cols_to_keep].rename(
+cks_cool_stars = cks_cool_stars[cks_cool_cols_to_keep].rename( 
     columns={
     "id_name": "id_starname", 
     "id_obs": "obs_id",
@@ -69,10 +76,20 @@ cks_cool_stars = cks_cool_stars[cks_cool_cols_to_keep].rename(
     "smsyn_vsini": "cks_vsini"})
 cks_cool_stars['sample'] = ['cks-cool'] * len(cks_cool_stars)
 
+# remove CKS-cool stars that also appear in CKS
+# to avoid duplicate entries (either based on name or observation ID)
+obs_ids_in_cks = cks_cool_stars['obs_id'].isin(cks_main_stars['obs_id'])
+cks_cool_stars = cks_cool_stars[~obs_ids_in_cks]
+stars_in_cks = cks_cool_stars['id_starname'].isin(cks_main_stars['id_starname'])
+cks_cool_stars = cks_cool_stars[~stars_in_cks]
+print(len(cks_cool_stars), 'after removing stars that also appear in CKS sample\n')
+
 # combine samples for training set
 cks_stars = pd.concat([cks_main_stars, cks_cool_stars], ignore_index=True)
+print(len(cks_stars), 'in merged CKS + CKS-cool table')
 # remove stars with vsini>=11km/s (upper limit of specmatch training set)
 cks_stars = cks_stars.query('cks_vsini<11')
+print(len(cks_stars), 'after removing stars with vsini<11km/s (specmatch upper limit)')
 # re-format obs ids
 cks_stars.obs_id = [i.replace(' ','') for i in cks_stars.obs_id]
 
@@ -85,7 +102,7 @@ print('table with CKS + CKS-cool stars ({} total) saved to {}'.format(
 
 # =================== transfer spectra from cadence =========================
 
-# # copy over CKS stars
+# copy over CKS stars
 # for index, row in cks_stars.iterrows():
 #     # filenames for rsync command
 #     obs_ids = [row.obs_id.replace('rj','bj'), row.obs_id, row.obs_id.replace('rj','ij')]
@@ -103,16 +120,19 @@ print('table with CKS + CKS-cool stars ({} total) saved to {}'.format(
 #     print('copied {} b,r,i chip spectra to ./data/cks-spectra/'.format(row.id_starname))
 
 
-# # ================== shift + register spectra =============================================
-# spectrum_ids = [i[20:-5] for i in glob.glob('./data/cks-spectra/ij*.fits')]
-# for spectrum_id in spectrum_ids:
-#     input_path = './data/cks-spectra'
-#     output_path = './data/cks-spectra_shifted'
-#     command = 'smemp shift -d {} -o {} {}'.format(
-#         input_path, 
-#         output_path, 
-#         spectrum_id)
-#     os.system(command)
+# ================== shift + register spectra =============================================
+for index, row in cks_stars.iterrows():
+    shifted_rchip_path = './data/cks-spectra_shifted/{}_adj.fits'.format(row.obs_id)
+    if os.path.exists(shifted_rchip_path):
+        pass
+    else:
+        input_path = './data/cks-spectra'
+        output_path = './data/cks-spectra_shifted'
+        command = 'smemp shift -d {} -o {} {}'.format(
+            input_path, 
+            output_path, 
+            row.obs_id.replace('r',''))
+        os.system(command)
 
 # ================== wavelet-filter + store spectra =============================================
 
