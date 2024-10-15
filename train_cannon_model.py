@@ -221,15 +221,15 @@ import time
 t0=time.time()
 
 # wavelet-filtered flux + flux errors, hot + cool stars	
-#save_training_data(training_set_table_hot, 'dwt_hot', filter_wavelets=True)
+save_training_data(training_set_table_hot, 'dwt_hot', filter_wavelets=True)
 print('wavelet-filtered training flux and sigma for hot stars saved to .csv files')	
-#save_training_data(training_set_table_cool, 'dwt_cool', filter_wavelets=True)
+save_training_data(training_set_table_cool, 'dwt_cool', filter_wavelets=True)
 print('wavelet-filtered training flux and sigma for cool stars saved to .csv files')
 
 # original flux + flux errors, hot + cool stars		
-#save_training_data(training_set_table_hot, 'original_hot', filter_wavelets=False)
+save_training_data(training_set_table_hot, 'original_hot', filter_wavelets=False)
 print('wavelet-filtered training flux and sigma for hot stars saved to .csv files')
-#save_training_data(training_set_table_cool, 'original_cool', filter_wavelets=False)
+save_training_data(training_set_table_cool, 'original_cool', filter_wavelets=False)
 print('wavelet-filtered training flux and sigma for cool stars saved to .csv files')
 print('total time to load training data = {} seconds'.format(time.time()-t0))
 
@@ -324,30 +324,17 @@ def train_and_validate_piecewise_model(order_numbers, model_suffix, filter_type=
 		training_set_table_hot, 
 		training_set_table_cool, 
 		order_numbers)
-	df_path = './data/cannon_models/{}/cannon_labels.png'.format(model_suffix)
+	df_path = './data/cannon_models/{}/cannon_labels.csv'.format(model_suffix)
 	cannon_label_df.to_csv(df_path)
 
 	# create + save one-to-one plot 
 	plot_one2one(cannon_label_df, model_suffix)
 
-
-
-
-
-# I just tested order 1, so this code works, but the model doesn't perform well?
-# then uncomment save_training_data before running again.
-# then I need it to save the order stats
-# then I can run it on other orders (but first remove Gl896 from training set.)
-# I think there's a problem with the part that saves it/makes a new directory.
-# I think maybe it only needs to make the directory once.
-
-
-train_and_validate_piecewise_model([1], 'order1_dwt')
-
-
 # ====================== train individual cannon models ============================================
 
-# maybe I need a function that takes in the order numnbers only
+# individual orders, wavelet-filtered
+for order_n in range(1,17):
+	train_and_validate_piecewise_model([order_n], 'order{}_dwt'.format(order_n))
 
 
 

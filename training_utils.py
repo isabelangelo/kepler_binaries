@@ -10,7 +10,6 @@ import numpy as np
 import spectrum
 from astropy.table import Table
 
-
 def leave1out_label_df(hot_cannon_model, cool_cannon_model, hot_label_df, cool_label_df,
 	order_numbers):
 	"""
@@ -37,7 +36,7 @@ def leave1out_label_df(hot_cannon_model, cool_cannon_model, hot_label_df, cool_l
 		    piecewise_addition = cool_cannon_model
 		    
 		cannon_label_data = []
-		for i in range(len(model_to_validate.training_set_labels))[:3]:
+		for i in range(len(model_to_validate.training_set_labels)):
 
 			# store labels, flux + sigma for held out target
 			smemp_labels = model_to_validate.training_set_labels[i]
@@ -60,7 +59,14 @@ def leave1out_label_df(hot_cannon_model, cool_cannon_model, hot_label_df, cool_l
 			model_leave1out.train()
 
 			# fit cross validation model to data
-			spec = spectrum.Spectrum(flux, sigma, order_numbers, model_leave1out, piecewise_addition)
+			# spectrum.Spectrum reads in cool model first, so inputs
+			# depend on which model is being validated.
+			if piecewise_component == 'cool':
+				spec = spectrum.Spectrum(flux, sigma, order_numbers, 
+					model_leave1out, piecewise_addition)
+			if piecewise_component == 'hot':
+				spec = spectrum.Spectrum(flux, sigma, order_numbers, 
+					piecewise_addition, model_leave1out)
 			spec.fit_single_star()
 
 			# store cannon labels + metrics
@@ -69,7 +75,7 @@ def leave1out_label_df(hot_cannon_model, cool_cannon_model, hot_label_df, cool_l
 			values = [row.id_starname]+smemp_labels.tolist() + spec.fit_cannon_labels.tolist() + [row.snr]
 			cannon_label_data.append(dict(zip(keys, values)))
 
-			return cannon_label_data
+		return cannon_label_data
 
 	# save leave-one-out labels from hot_cool components to dataframe
 	cool_leave1out_labels = single_component_labels('cool')
@@ -93,51 +99,58 @@ def plot_label_one2one(x, y):
 	return bias, rms
 
 def plot_one2one(cannon_label_df, model_suffix):
-    """
-    Generates a one-to-one plot of the known training labels
-    and Cannon-inferred labels for the training vallidation sample,
-    as computed by a particular Cannon model of interest.
-    """
-    plt.figure(figsize=(15,3))
-    plt.subplot(141)
-    teff_bias, teff_rms = plot_label_one2one(
-        cannon_label_df.smemp_teff, 
-        cannon_label_df.cannon_teff)
-    plt.plot([4000,7000],[4000,7000],'b-')
-    plt.xlabel('specmatch library Teff (K)');plt.ylabel('Cannon Teff (K)')
+	"""
+	Generates a one-to-one plot of the known training labels
+	and Cannon-inferred labels for the training vallidation sample,
+	as computed by a particular Cannon model of interest.
+	"""
+	plt.figure(figsize=(15,3))
+	plt.subplot(141)
+	teff_bias, teff_rms = plot_label_one2one(
+	    cannon_label_df.smemp_teff, 
+	    cannon_label_df.cannon_teff)
+	plt.plot([4000,7000],[4000,7000],'b-')
+	plt.xlabel('specmatch library Teff (K)');plt.ylabel('Cannon Teff (K)')
 
-    plt.subplot(142)
-    logg_bias, logg_rms = plot_label_one2one(
-        cannon_label_df.smemp_logg, 
-        cannon_label_df.cannon_logg)
-    plt.plot([2.3,5],[2.3,5],'b-')
-    plt.xlabel('specmatch library logg (dex)');plt.ylabel('Cannon logg (dex)')
+	plt.subplot(142)
+	logg_bias, logg_rms = plot_label_one2one(
+	    cannon_label_df.smemp_logg, 
+	    cannon_label_df.cannon_logg)
+	plt.plot([2.3,5],[2.3,5],'b-')
+	plt.xlabel('specmatch library logg (dex)');plt.ylabel('Cannon logg (dex)')
 
-    plt.subplot(143)
-    feh_bias, feh_rms = plot_label_one2one(
-        cannon_label_df.smemp_feh, 
-        cannon_label_df.cannon_feh)
-    plt.plot([-1.1,0.6],[-1.1,0.6],'b-')
-    plt.xlabel('specmatch library Fe/H (dex)');plt.ylabel('Cannon Fe/H (dex)')
+	plt.subplot(143)
+	feh_bias, feh_rms = plot_label_one2one(
+	    cannon_label_df.smemp_feh, 
+	    cannon_label_df.cannon_feh)
+	plt.plot([-1.1,0.6],[-1.1,0.6],'b-')
+	plt.xlabel('specmatch library Fe/H (dex)');plt.ylabel('Cannon Fe/H (dex)')
 
-    plt.subplot(144)
-    vsini_bias, vsini_rms = plot_label_one2one(
-        cannon_label_df.smemp_vsini, 
-        cannon_label_df.cannon_vsini)
-    plt.plot([0,20],[0,20], 'b-')
-    plt.xlabel('specmatch library vsini (km/s)');plt.ylabel('Cannon vsini (km/s)')
+	plt.subplot(144)
+	vsini_bias, vsini_rms = plot_label_one2one(
+	    cannon_label_df.smemp_vsini, 
+	    cannon_label_df.cannon_vsini)
+	plt.plot([0,20],[0,20], 'b-')
+	plt.xlabel('specmatch library vsini (km/s)');plt.ylabel('Cannon vsini (km/s)')
 
-    # save stats to dataframe
-    keys = ['model','label','bias','rms']
-    order_data = pd.DataFrame(
-        (dict(zip(keys, [model_suffix, 'teff', teff_bias, teff_rms])),
-        dict(zip(keys, [model_suffix, 'logg', logg_bias, logg_rms])),
-        dict(zip(keys, [model_suffix, 'feh', feh_bias, feh_rms])),
-        dict(zip(keys, [model_suffix, 'vsini', vsini_bias, vsini_rms]))))
-    
-    print(order_data)
-    figure_path = './data/cannon_models/{}/one2one.png'.format(model_suffix)
-    plt.savefig(figure_path, dpi=300, bbox_inches='tight')
-    print('one-to-one plot saved to saved to {}'.format(figure_path))
+	# save stats to dataframe
+	keys = ['model','label','bias','rms']
+	order_data = pd.DataFrame(
+	    (dict(zip(keys, [model_suffix, 'teff', teff_bias, teff_rms])),
+	    dict(zip(keys, [model_suffix, 'logg', logg_bias, logg_rms])),
+	    dict(zip(keys, [model_suffix, 'feh', feh_bias, feh_rms])),
+	    dict(zip(keys, [model_suffix, 'vsini', vsini_bias, vsini_rms]))))
+	print(order_data)
+	order_data_path = './data/cannon_models/rchip_order_stats.csv'
+	existing_order_data = pd.read_csv(order_data_path)
+	updated_order_data  = pd.concat(
+			[existing_order_data, order_data])
+	updated_order_data.to_csv(order_data_path, index=False)
+
+
+	# save plot
+	figure_path = './data/cannon_models/{}/one2one.png'.format(model_suffix)
+	plt.savefig(figure_path, dpi=300, bbox_inches='tight')
+	print('one-to-one plot saved to saved to {}'.format(figure_path))
 
 

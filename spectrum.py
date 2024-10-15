@@ -88,7 +88,6 @@ class Spectrum(object):
 		op_local = leastsq(residuals,x0=initial_labels, full_output=True)
 
 		# update model attributes
-		# I wonder if there's a better way to do this?
 		self.fit_cannon_labels = op_local[0]
 		self.fit_chisq = np.sum(op_local[2]["fvec"]**2)
 		self.model_flux = self.piecewise_cannon_model(self.fit_cannon_labels, return_flux=True)
