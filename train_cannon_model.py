@@ -318,11 +318,11 @@ def train_and_validate_piecewise_model(order_numbers, model_suffix, filter_type=
 
 	# compute + save Cannon output labels for training set stars
 	# using leave-one-out cross-validation
-	cannon_label_df = leave1out_label_df(
-		hot_cannon_model, 
+	cannon_label_df = leave20pout_label_df(
 		cool_cannon_model, 
-		training_set_table_hot, 
+		hot_cannon_model, 
 		training_set_table_cool, 
+		training_set_table_hot, 
 		order_numbers)
 	df_path = './data/cannon_models/{}/cannon_labels.csv'.format(model_suffix)
 	cannon_label_df.to_csv(df_path)
@@ -333,9 +333,17 @@ def train_and_validate_piecewise_model(order_numbers, model_suffix, filter_type=
 # ====================== train individual cannon models ============================================
 
 # individual orders, wavelet-filtered
-for order_n in range(1,17):
-	train_and_validate_piecewise_model([order_n], 'order{}_dwt'.format(order_n))
+# for order_n in range(1,17):
+# 	train_and_validate_piecewise_model([order_n], 'order{}_dwt'.format(order_n))
 
+# # all orders, wavelet-filtered
+# train_and_validate_piecewise_model([i for i in range(1,17)], 'all_orders_dwt')
+
+# # adopted orders 1-7, wavelet-filtered
+# train_and_validate_piecewise_model([i for i in range(1,7)], 'orders_1-7_dwt')
+
+# adopted orders 1-7, original
+train_and_validate_piecewise_model([i for i in range(1,7)], 'orders_1-7_original', filter_type='original')
 
 
 

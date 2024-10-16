@@ -10,79 +10,120 @@ import numpy as np
 import spectrum
 from astropy.table import Table
 
-def leave1out_label_df(hot_cannon_model, cool_cannon_model, hot_label_df, cool_label_df,
-	order_numbers):
-	"""
-	Compute Cannon output labels for training set stars using leave-one-out
-	cross-validation of piecewise Cannon model with hot + cool components."""
+def leave20pout_label_df(cool_cannon_model, hot_cannon_model, cool_label_df, hot_label_df,
+    order_numbers):
+    """
+    Compute Cannon output labels for training set stars using leave-one-out
+    cross-validation of piecewise Cannon model with hot + cool components."""
 
-	smemp_keys = ['smemp_teff', 'smemp_logg', 'smemp_feh', 'smemp_vsini']
-	cannon_keys = [i.replace('smemp', 'cannon') for i in smemp_keys]
-	vectorizer = tc.vectorizer.PolynomialVectorizer(smemp_keys, 2)
+    # define training set labels
+    smemp_keys = ['smemp_teff', 'smemp_logg', 'smemp_feh', 'smemp_vsini']
+    cannon_keys = [i.replace('smemp', 'cannon') for i in smemp_keys]
+    keys = ['id_starname'] + smemp_keys + cannon_keys + ['fit_chisq','snr']
+    vectorizer = tc.vectorizer.PolynomialVectorizer(smemp_keys, 2)
 
-	def single_component_labels(piecewise_component):
-		"""
-		Computes cannon output labels for all stars in training set of
-		single component of piecewise model. Needs to be run on hot
-		+ cool components individally to validate the full piecewise model.
-		"""
-		if piecewise_component == 'cool':
-		    model_to_validate = cool_cannon_model
-		    training_labels_to_validate = cool_label_df
-		    piecewise_addition = hot_cannon_model
-		if piecewise_component == 'hot':
-		    model_to_validate = hot_cannon_model
-		    training_labels_to_validate = hot_label_df
-		    piecewise_addition = cool_cannon_model
-		    
-		cannon_label_data = []
-		for i in range(len(model_to_validate.training_set_labels)):
 
-			# store labels, flux + sigma for held out target
-			smemp_labels = model_to_validate.training_set_labels[i]
-			flux = model_to_validate.training_set_flux[i]
-			sigma = 1/np.sqrt(model_to_validate.training_set_ivar[i])
+    def training_set_bins(cannon_model):
+        """Bin training set into a given model into
+        5 subsets for leave-20%-out validation"""
+        n_training = len(cannon_model.training_set_labels)
+        test_bins = np.linspace(0, n_training, 6, dtype=int)
+        test_bins[-1]= n_training # include remainder in last chunk
+        return test_bins
+    
+    def leave1out_cannon_model(cannon_model, s):
+        """Train Cannon model on training set with 20% subset held out"""
+        
+        # remove left out targets from original training data
+        training_set_labels_leave1out = np.delete(cannon_model.training_set_labels, s, 0)
+        training_set_leave1out = Table(training_set_labels_leave1out, names=smemp_keys)
+        normalized_flux_leave1out = np.delete(cannon_model.training_set_flux, s, 0)
+        normalized_ivar_leave1out = np.delete(cannon_model.training_set_ivar, s, 0)
 
-			# remove left out target from training data
-			training_set_labels_leave1out = np.delete(model_to_validate.training_set_labels, i, 0)
-			training_set_leave1out = Table(training_set_labels_leave1out, names=smemp_keys)
-			normalized_flux_leave1out = np.delete(model_to_validate.training_set_flux, i, 0)
-			normalized_ivar_leave1out = np.delete(model_to_validate.training_set_ivar, i, 0)
+        # train model for cross validation
+        model_leave1out = tc.CannonModel(
+            training_set_leave1out, 
+            normalized_flux_leave1out, 
+            normalized_ivar_leave1out,
+            vectorizer=vectorizer, 
+            regularization=None)
+        model_leave1out.train()
+        return model_leave1out
+    
+    def leave1out_label_data(cannon_model, label_df, start_idx, stop_idx, 
+                                 cool_cannon_model_leave1out, hot_cannon_model_leave1out):
+        """Compute + save labels for objects held out of the training set."""
+        # store labels for all held-out objects in model
+        cannon_label_data = []
+        for spectrum_idx in range(start_idx, stop_idx):
+            # load object name from training label dataframe
+            spectrum_row = label_df.iloc[spectrum_idx]
+            id_starname = spectrum_row.id_starname
+            # load object labels, flux, ivar from saved model data
+            smemp_labels = cannon_model.training_set_labels[spectrum_idx]
+            flux = cannon_model.training_set_flux[spectrum_idx]
+            ivar = cannon_model.training_set_ivar[spectrum_idx]
+            sigma = 1/np.sqrt(ivar)
 
-			# train model for cross validation
-			model_leave1out = tc.CannonModel(
-			    training_set_leave1out, 
-			    normalized_flux_leave1out, 
-			    normalized_ivar_leave1out,
-			    vectorizer=vectorizer, 
-			    regularization=None)
-			model_leave1out.train()
+            # fit cross validation model to data
+            spec = spectrum.Spectrum(
+                flux, 
+                sigma, 
+                order_numbers, 
+                cool_cannon_model_leave1out,
+                hot_cannon_model_leave1out)
+            spec.fit_single_star()
+            cannon_labels = spec.fit_cannon_labels          
 
-			# fit cross validation model to data
-			# spectrum.Spectrum reads in cool model first, so inputs
-			# depend on which model is being validated.
-			if piecewise_component == 'cool':
-				spec = spectrum.Spectrum(flux, sigma, order_numbers, 
-					model_leave1out, piecewise_addition)
-			if piecewise_component == 'hot':
-				spec = spectrum.Spectrum(flux, sigma, order_numbers, 
-					piecewise_addition, model_leave1out)
-			spec.fit_single_star()
+            # store relevant metrics for dataframe
+            values = [spectrum_row.id_starname]+smemp_labels.tolist() + \
+                    spec.fit_cannon_labels.tolist() + [spec.fit_chisq, spectrum_row.snr]
+            cannon_label_data.append(dict(zip(keys, values)))
+                
+        return cannon_label_data
+    
+    # bin data from cool + hot model component training sets
+    cool_test_bins = training_set_bins(cool_cannon_model)    
+    hot_test_bins = training_set_bins(hot_cannon_model)
+    
+    # perform leave-20%-out cross validation for each bin
+    cannon_label_dfs = []    
+    for i in range(5):
+        
+        # define index bounds of left out sample
+        cool_start_idx, cool_stop_idx = cool_test_bins[i], cool_test_bins[i+1]
+        hot_start_idx, hot_stop_idx = hot_test_bins[i], hot_test_bins[i+1]
+        s_cool = slice(cool_start_idx, cool_stop_idx)
+        s_hot = slice(hot_start_idx, hot_stop_idx)
+    
+        print('training model with cool objects {}-{}, hot objects {}-{} held out'.format(
+            cool_start_idx, cool_stop_idx, hot_start_idx, hot_stop_idx))
+        
+        # train models for cross-validation
+        cool_cannon_model_leave1out = leave1out_cannon_model(cool_cannon_model, s_cool)
+        hot_cannon_model_leave1out = leave1out_cannon_model(hot_cannon_model, s_hot)
+        
+        # store labels, flux + sigma for left out targets
+        cool_label_data_i = leave1out_label_data(
+            cool_cannon_model, 
+            cool_label_df, 
+            cool_start_idx, 
+            cool_stop_idx, 
+            cool_cannon_model_leave1out, 
+            hot_cannon_model_leave1out)
+        hot_label_data_i = leave1out_label_data(
+            hot_cannon_model, 
+            hot_label_df, 
+            hot_start_idx, 
+            hot_stop_idx, 
+            cool_cannon_model_leave1out, 
+            hot_cannon_model_leave1out)
 
-			# store cannon labels + metrics
-			row = training_labels_to_validate.iloc[i]
-			keys = ['id_starname'] + smemp_keys + cannon_keys + ['snr']
-			values = [row.id_starname]+smemp_labels.tolist() + spec.fit_cannon_labels.tolist() + [row.snr]
-			cannon_label_data.append(dict(zip(keys, values)))
-
-		return cannon_label_data
-
-	# save leave-one-out labels from hot_cool components to dataframe
-	cool_leave1out_labels = single_component_labels('cool')
-	hot_leave1out_labels = single_component_labels('hot')
-	cannon_label_df = pd.DataFrame(cool_leave1out_labels + hot_leave1out_labels)
-
-	return cannon_label_df
+        # combine validation data from cool + hot models
+        cannon_label_dfs.append(pd.DataFrame(cool_label_data_i + hot_label_data_i))
+       
+    cannon_label_data = pd.concat(cannon_label_dfs)
+    return cannon_label_data
 
 def plot_label_one2one(x, y):
 	"""
