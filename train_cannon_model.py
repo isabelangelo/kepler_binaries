@@ -339,11 +339,14 @@ def train_and_validate_piecewise_model(order_numbers, model_suffix, filter_type=
 # # all orders, wavelet-filtered
 # train_and_validate_piecewise_model([i for i in range(1,17)], 'all_orders_dwt')
 
-# # adopted orders 1-7, wavelet-filtered
-# train_and_validate_piecewise_model([i for i in range(1,7)], 'orders_1-7_dwt')
+# adopted orders 1-7, wavelet-filtered
+train_and_validate_piecewise_model([i for i in range(1,7)], 'orders_1-7_dwt_maxLikelihood')
 
-# adopted orders 1-7, original
-train_and_validate_piecewise_model([i for i in range(1,7)], 'orders_1-7_original', filter_type='original')
+# # all orders, original
+# train_and_validate_piecewise_model([i for i in range(1,17)], 'all_orders_original', filter_type='original')
+
+# # adopted orders 1-7, original
+# train_and_validate_piecewise_model([i for i in range(1,7)], 'orders_1-7_original', filter_type='original')
 
 
 
