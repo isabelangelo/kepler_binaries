@@ -19,7 +19,7 @@ def leave20pout_label_df(cool_cannon_model, hot_cannon_model, cool_label_df, hot
     # define training set labels
     smemp_keys = ['smemp_teff', 'smemp_logg', 'smemp_feh', 'smemp_vsini']
     cannon_keys = [i.replace('smemp', 'cannon') for i in smemp_keys]
-    keys = ['id_starname'] + smemp_keys + cannon_keys + ['fit_chisq','snr']
+    keys = ['id_starname'] + smemp_keys + cannon_keys + ['fit_logL','fit_model','snr']
     vectorizer = tc.vectorizer.PolynomialVectorizer(smemp_keys, 2)
 
 
@@ -77,7 +77,8 @@ def leave20pout_label_df(cool_cannon_model, hot_cannon_model, cool_label_df, hot
 
             # store relevant metrics for dataframe
             values = [spectrum_row.id_starname]+smemp_labels.tolist() + \
-                    spec.fit_cannon_labels.tolist() + [spec.fit_likelihood, spectrum_row.snr]
+                    spec.fit_cannon_labels.tolist() + \
+                    [spec.fit_likelihood, spec.fit_model, spectrum_row.snr]
             cannon_label_data.append(dict(zip(keys, values)))
                 
         return cannon_label_data
