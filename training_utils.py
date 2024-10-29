@@ -78,7 +78,7 @@ def leave20pout_label_df(cool_cannon_model, hot_cannon_model, cool_label_df, hot
             # store relevant metrics for dataframe
             values = [spectrum_row.id_starname]+smemp_labels.tolist() + \
                     spec.fit_cannon_labels.tolist() + \
-                    [spec.fit_likelihood, spec.fit_model, spectrum_row.snr]
+                    [spec.fit_logLikelihood, spec.fit_model, spectrum_row.snr]
             cannon_label_data.append(dict(zip(keys, values)))
                 
         return cannon_label_data
@@ -121,7 +121,9 @@ def leave20pout_label_df(cool_cannon_model, hot_cannon_model, cool_label_df, hot
             hot_cannon_model_leave1out)
 
         # combine validation data from cool + hot models
-        cannon_label_dfs.append(pd.DataFrame(cool_label_data_i + hot_label_data_i))
+        label_df_i = pd.DataFrame(cool_label_data_i + hot_label_data_i)
+        label_df_i['model_number'] = i
+        cannon_label_dfs.append(label_df_i)
        
     cannon_label_data = pd.concat(cannon_label_dfs)
     return cannon_label_data

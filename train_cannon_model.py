@@ -111,8 +111,15 @@ training_set_table['id_starname'] = [i.replace(' ','') for i in training_set_tab
 # split training set into cool, hot stars for piecewise model
 # remove stars with broadened vsini from hot star model + giants from cool star model
 training_set_table_cool = training_set_table.query('(smemp_teff<5300) & (smemp_logg>4)')
-training_set_table_cool.to_csv('./data/label_and_metric_dataframes/training_labels_cool.csv', index=None)
 training_set_table_hot = training_set_table.query('(smemp_teff>5200) & (broadened_vsini==False)')
+
+# shuffle rows in training set tables
+# to ensure leave-20%-out validation is trained on random 80% samples
+training_set_table_cool = training_set_table_cool.sample(frac=1)
+training_set_table_hot = training_set_table_hot.sample(frac=1)
+
+# save to csv files
+training_set_table_cool.to_csv('./data/label_and_metric_dataframes/training_labels_cool.csv', index=None)
 training_set_table_hot.to_csv('./data/label_and_metric_dataframes/training_labels_hot.csv', index=None)
 
 # store columns with labels for training
@@ -333,17 +340,14 @@ def train_and_validate_piecewise_model(order_numbers, model_suffix, filter_type=
 # ====================== train individual cannon models ============================================
 
 # individual orders, wavelet-filtered
-# for order_n in range(1,17):
-# 	train_and_validate_piecewise_model([order_n], 'order{}_dwt'.format(order_n))
+for order_n in range(1,17):
+	train_and_validate_piecewise_model([order_n], 'order{}_dwt'.format(order_n))
 
-# # all orders, wavelet-filtered
-# train_and_validate_piecewise_model([i for i in range(1,17)], 'all_orders_dwt')
+# all orders, wavelet-filtered
+train_and_validate_piecewise_model([i for i in range(1,17)], 'all_orders_dwt')
 
-# adopted orders 1-7, wavelet-filtered
-train_and_validate_piecewise_model([i for i in range(1,7)], 'orders_1-6_dwt_maxLikelihood')
-
-# # all orders, original
-# train_and_validate_piecewise_model([i for i in range(1,17)], 'all_orders_original', filter_type='original')
+# # adopted orders 1-7, wavelet-filtered
+# train_and_validate_piecewise_model([i for i in range(1,7)], 'orders_1-7_dwt')
 
 # # adopted orders 1-7, original
 # train_and_validate_piecewise_model([i for i in range(1,7)], 'orders_1-7_original', filter_type='original')
