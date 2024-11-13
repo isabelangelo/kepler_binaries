@@ -115,8 +115,8 @@ training_set_table_hot = training_set_table.query('(smemp_teff>5200) & (broadene
 
 # shuffle rows in training set tables
 # to ensure leave-20%-out validation is trained on random 80% samples
-training_set_table_cool = training_set_table_cool.sample(frac=1)
-training_set_table_hot = training_set_table_hot.sample(frac=1)
+training_set_table_cool = training_set_table_cool.sample(frac=1, random_state=1214)
+training_set_table_hot = training_set_table_hot.sample(frac=1, random_state=1214)
 
 # save to csv files
 training_set_table_cool.to_csv('./data/label_and_metric_dataframes/training_labels_cool.csv', index=None)
@@ -339,6 +339,10 @@ def train_and_validate_piecewise_model(order_numbers, model_suffix, filter_type=
 
 # ====================== train individual cannon models ============================================
 
+# TEMPORARY: 
+# adopted orders 1-7, wavelet-filtered
+train_and_validate_piecewise_model([i for i in range(1,7)], 'orders_1-6_dwt')
+
 # individual orders, wavelet-filtered
 for order_n in range(1,17):
 	train_and_validate_piecewise_model([order_n], 'order{}_dwt'.format(order_n))
@@ -347,10 +351,10 @@ for order_n in range(1,17):
 train_and_validate_piecewise_model([i for i in range(1,17)], 'all_orders_dwt')
 
 # # adopted orders 1-7, wavelet-filtered
-# train_and_validate_piecewise_model([i for i in range(1,7)], 'orders_1-7_dwt')
+# train_and_validate_piecewise_model([i for i in range(1,7)], 'orders_1-6_dwt')
 
-# # adopted orders 1-7, original
-# train_and_validate_piecewise_model([i for i in range(1,7)], 'orders_1-7_original', filter_type='original')
+# adopted orders 1-7, original
+train_and_validate_piecewise_model([i for i in range(1,7)], 'orders_1-6_original', filter_type='original')
 
 
 

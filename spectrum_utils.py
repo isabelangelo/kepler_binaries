@@ -41,7 +41,7 @@ for idx, row in mask_table_cut.iterrows():
 mask_table_cut.insert(4, 'minw', minw)
 mask_table_cut.insert(5, 'maxw', maxw)
 
-# initial Teff values for binary model optimizer
+# inistial Teff values for binary model optimizer
 teff_grid = np.arange(4000,10000,2000)
 initial_teff_arr = [(x, y) for x in teff_grid for y in teff_grid if x>=y]
 
