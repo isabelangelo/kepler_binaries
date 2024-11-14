@@ -341,20 +341,20 @@ def train_and_validate_piecewise_model(order_numbers, model_suffix, filter_type=
 
 # TEMPORARY: 
 # adopted orders 1-7, wavelet-filtered
-train_and_validate_piecewise_model([i for i in range(1,7)], 'orders_1-6_dwt')
+train_and_validate_piecewise_model([i for i in range(1,7)], 'orders_1-6_dwt_nov12')
 
-# individual orders, wavelet-filtered
-for order_n in range(1,17):
-	train_and_validate_piecewise_model([order_n], 'order{}_dwt'.format(order_n))
+# # individual orders, wavelet-filtered
+# for order_n in range(1,17):
+# 	train_and_validate_piecewise_model([order_n], 'order{}_dwt'.format(order_n))
 
-# all orders, wavelet-filtered
-train_and_validate_piecewise_model([i for i in range(1,17)], 'all_orders_dwt')
+# # all orders, wavelet-filtered
+# train_and_validate_piecewise_model([i for i in range(1,17)], 'all_orders_dwt')
 
-# # adopted orders 1-7, wavelet-filtered
-# train_and_validate_piecewise_model([i for i in range(1,7)], 'orders_1-6_dwt')
+# # # adopted orders 1-7, wavelet-filtered
+# # train_and_validate_piecewise_model([i for i in range(1,7)], 'orders_1-6_dwt')
 
-# adopted orders 1-7, original
-train_and_validate_piecewise_model([i for i in range(1,7)], 'orders_1-6_original', filter_type='original')
+# # adopted orders 1-7, original
+# train_and_validate_piecewise_model([i for i in range(1,7)], 'orders_1-6_original', filter_type='original')
 
 
 

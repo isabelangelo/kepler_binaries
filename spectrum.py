@@ -52,13 +52,18 @@ class Spectrum(object):
         based on the minimum and maximum training set labels
         for a given Cannon model."""
 
+        # bounds from training sets
         min_bounds = np.min(cannon_model.training_set_labels, axis=0)
         max_bounds = np.max(cannon_model.training_set_labels, axis=0)
 
+        # add in RV shift and bound to (-10, 10) km/s
+        min_bounds = np.append(min_bounds, -10)
+        max_bounds = np.append(max_bounds, 10)
+
         # re-parameterize from vsini to log(vsini)
         # note: log(vsini)=-2-1 is vsini=0.01-10km/s
-        min_bounds[-1] = -2
-        max_bounds[-1] = 1
+        min_bounds[-2] = -2
+        max_bounds[-2] = 1
 
         return tuple(zip(min_bounds, max_bounds))
     
@@ -72,7 +77,7 @@ class Spectrum(object):
         term2 = 2*logLikelihood
         return term1 - term2
 
-    def fit_single_star(self, plot_fit=True):
+    def fit_single_star(self):
         """ Run the test step on the spectrum (similar to the Cannon 2 
         test step, but we mask telluric lines and compute the best-fit
         based on the minimum -log(Likelihood) )
@@ -83,27 +88,31 @@ class Spectrum(object):
             We use the Bayesian Likelihood formula for this calculation.
             """
             # re-parameterize from log(vsini) to vsini
-            param[-1] = 10**param[-1]
+            param[-2] = 10**param[-2]
 
             # determine model, error term based on piecewise model
             sn2 = self.sigma**2 + cannon_model.s2
 
-            # compute log-likelihood
-            model = cannon_model(param)
-            term_in_brackets = (self.flux - model)**2/sn2 + np.log(2*np.pi*sn2)
-            negative_logLikelihood = (1/2)*np.sum(term_in_brackets)
+            # evaluate cannon model at labels of interest
+            model = cannon_model(param[:-1])
             
-            print([round(i,3) for i in param], negative_logLikelihood)
+            # apply RV shift
+            delta_w = self.wav * param[-1]/speed_of_light_kms
+            model_shifted = np.interp(self.wav, self.wav + delta_w, model)
+        
+            # compute log-likelihood
+            term_in_brackets = (self.flux - model_shifted)**2/sn2 + np.log(2*np.pi*sn2)
+            negative_logLikelihood = (1/2)*np.sum(term_in_brackets)
 
             return negative_logLikelihood
 
         # determine initial labels
-        cool_param_init = self.cool_cannon_model._fiducials.copy()[2:].tolist()
-        hot_param_init = self.hot_cannon_model._fiducials.copy()[2:].tolist()
+        cool_param_init = self.cool_cannon_model._fiducials.copy()[2:].tolist() + [0]
+        hot_param_init = self.hot_cannon_model._fiducials.copy()[2:].tolist() + [0]
 
         # re-parameterize from vsini to log(vsini)
-        cool_param_init[-1] = np.log10(cool_param_init[-1])
-        hot_param_init[-1] = np.log10(hot_param_init[-1])
+        cool_param_init[-2] = np.log10(cool_param_init[-2])
+        hot_param_init[-2] = np.log10(hot_param_init[-2])
         
         # coarse brute search to determine initial Teff, logg
         teff_hr = [3000, 3500, 4000, 4500, 5000, 5500, 5750, 6000, 6500, 5250]
@@ -113,10 +122,15 @@ class Spectrum(object):
             negative_logL(i + cool_param_init, self.cool_cannon_model) for i in hr_init[:5]]
         negative_logL_hr_hot = [
             negative_logL(i + hot_param_init, self.hot_cannon_model) for i in hr_init[5:]]
-        
+
         # update initial conditions with brute search outputs
         cool_param_init = hr_init[:5][np.argmin(negative_logL_hr_cool)] + cool_param_init
         hot_param_init = hr_init[5:][np.argmin(negative_logL_hr_hot)] + hot_param_init
+
+        
+        # TO DO: add RV bounds to optimizer
+        # then make sure binary bounds reflect this
+        # then git commit
         
         # fit spectrum with hot + cool cannon models
         op_cool = minimize(
@@ -142,17 +156,20 @@ class Spectrum(object):
             op = op_hot
             fit_cannon_model = self.hot_cannon_model
             self.fit_model = 'hot'
-        
+                
         # re-parameterize from log(vsini) to vsini
         self.fit_cannon_labels = op.x
-        self.fit_cannon_labels[-1] = 10**self.fit_cannon_labels[-1]
+        self.fit_cannon_labels[-2] = 10**self.fit_cannon_labels[-2]
         
         # update spectrum attributes
         self.fit_logLikelihood = -1*op.fun
         self.fit_BIC = self.BIC(
-            len(self.fit_cannon_labels), 
-            self.fit_logLikelihood)
-        self.model_flux = fit_cannon_model(self.fit_cannon_labels)
+                len(self.fit_cannon_labels), 
+                self.fit_logLikelihood)
+        self.model_flux = np.interp(
+            self.wav, 
+            self.wav + self.wav * self.fit_cannon_labels[-1]/speed_of_light_kms, 
+            fit_cannon_model(self.fit_cannon_labels[:-1]))
         self.model_residuals = self.flux - self.model_flux
 
     def maxL_binary(self, primary_cannon_model, secondary_cannon_model):
@@ -167,9 +184,9 @@ class Spectrum(object):
         # with RV offset=-10-10km/s
         primary_op_bounds = self.op_bounds(primary_cannon_model)
         secondary_op_bounds = self.op_bounds(secondary_cannon_model)
-        binary_op_bounds = primary_op_bounds + ((-10,10),) + \
+        binary_op_bounds = primary_op_bounds + \
                             (secondary_op_bounds[0],) + (secondary_op_bounds[1],) + \
-                            (secondary_op_bounds[3],) + ((-10,10),)
+                            (secondary_op_bounds[3],) + (secondary_op_bounds[4],)
         
         def binary_model(param1, param2):
             """Calculate binary model associated with set of parameters
