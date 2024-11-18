@@ -1,9 +1,10 @@
 
+import matplotlib.pyplot as plt
+import numpy as np
+import time
 from scipy.optimize import brute
 from scipy.optimize import minimize
 from spectrum_utils import *
-import numpy as np
-import time
 
 class Spectrum(object):
     """
@@ -126,11 +127,6 @@ class Spectrum(object):
         # update initial conditions with brute search outputs
         cool_param_init = hr_init[:5][np.argmin(negative_logL_hr_cool)] + cool_param_init
         hot_param_init = hr_init[5:][np.argmin(negative_logL_hr_hot)] + hot_param_init
-
-        
-        # TO DO: add RV bounds to optimizer
-        # then make sure binary bounds reflect this
-        # then git commit
         
         # fit spectrum with hot + cool cannon models
         op_cool = minimize(
@@ -172,7 +168,7 @@ class Spectrum(object):
             fit_cannon_model(self.fit_cannon_labels[:-1]))
         self.model_residuals = self.flux - self.model_flux
 
-    def maxL_binary(self, primary_cannon_model, secondary_cannon_model):
+    def fit_binary_fixed_components(self, primary_cannon_model, secondary_cannon_model):
         # initial conditions based on component cannon models
         _, logg1_init, feh1_init, vsini1_init = primary_cannon_model._fiducials.copy()
         _, logg2_init, _, vsini2_init = secondary_cannon_model._fiducials.copy()
@@ -271,12 +267,12 @@ class Spectrum(object):
         op_brute = brute(negative_logL_wrapper, teff_ranges, finish=None)
         teff1_init, teff2_init = op_brute
         #print('total time for brute search: {} seconds'.format(time.time()-t0_brute))
-        print('initializing brute search at Teff1={}, Teff2={}'.format(teff1_init, teff2_init))
+        print('initializing local search at Teff1={}, Teff2={}'.format(teff1_init, teff2_init))
         
         # initial labels + step size for local minimizer based on brute search outputs
         initial_labels = np.array([teff1_init, logg1_init, feh1_init, vsini1_init, 0, \
                   teff2_init, logg2_init, vsini2_init, 0])
-        initial_steps = [10, 0.1, 0.01, 0.1, 0.5, 10, 0.1, 0.1, 0.5]
+        initial_steps = [50, 0.1, 0.01, 0.1, 0.5, 50, 0.1, 0.1, 0.5]
         initial_simplex = [initial_labels] + [np.array(initial_labels) + \
                                               np.eye(len(initial_labels))[i] * initial_steps[i]\
                                               for i in range(len(initial_labels))]
@@ -289,38 +285,44 @@ class Spectrum(object):
             bounds = binary_op_bounds,
             method='Nelder-Mead',
             options={'initial_simplex':initial_simplex,'fatol':1,'xatol':1})
-        #print('final Teff1={}, Teff2={}'.format(op_minimize.x[0], op_minimize.x[5]))
+        print('final Teff1={}, Teff2={}'.format(op_minimize.x[0], op_minimize.x[5]))
         #print('total time for local optimizer: {} seconds'.format(time.time()-t0_minimize))
+
+        # re-parameterize from log(vsini) to vsini
+        op_minimize.binary_fit_cannon_labels = op_minimize.x.copy()
+        op_minimize.binary_fit_cannon_labels[3] = 10**op_minimize.binary_fit_cannon_labels[3]
+        op_minimize.binary_fit_cannon_labels[7] = 10**op_minimize.binary_fit_cannon_labels[7]
         
         # store binary model flux associated with maximum likelihood
         op_minimize.model_flux, _, _ = binary_model(
-            op_minimize.x[:5], 
-            op_minimize.x[[5,6,2,7,8]])
+            op_minimize.binary_fit_cannon_labels[:5], 
+            op_minimize.binary_fit_cannon_labels[[5,6,2,7,8]])
         
         return op_minimize
 
     def fit_binary(self):
+
         # run maximum likelihood optimization in hot + cool model regimes
         t0_fit = time.time()
-        op_hot1_cool2 = self.maxL_binary(self.hot_cannon_model, self.cool_cannon_model)
-        op_cool1_cool2 = self.maxL_binary(self.cool_cannon_model, self.cool_cannon_model)
-        op_hot1_hot2 = self.maxL_binary(self.hot_cannon_model, self.hot_cannon_model)
-
-        # TEMPORARY: store different optimizer model fluxes
-        self.hot1_cool2_flux = op_hot1_cool2.model_flux
-        self.hot1_hot2_flux = op_hot1_hot2.model_flux
-        self.cool1_cool2_flux = op_cool1_cool2.model_flux
-
+        optimizers = {
+            'hot1_cool2': self.fit_binary_fixed_components(
+                self.hot_cannon_model, 
+                self.cool_cannon_model),
+            'cool1_cool2': self.fit_binary_fixed_components(
+                self.cool_cannon_model, 
+                self.cool_cannon_model),
+            'hot1_hot2': self.fit_binary_fixed_components(
+                self.hot_cannon_model, 
+                self.hot_cannon_model)}
         print('total time = {} seconds'.format(time.time()-t0_fit))
         
         # select best-fit binary from all regimes
         # (i.e., lowest -log(Likelihood))
-        op = min([op_hot1_cool2, op_cool1_cool2, op_hot1_hot2], key=lambda x: x.fun)
+        op = min(optimizers.values(), key=lambda x: x.fun)
+        self.binary_fit_model = next(name for name, i in optimizers.items() if i is op)
         
         # re-parameterize from log(vsini) to vsini
-        self.binary_fit_cannon_labels = op.x
-        self.binary_fit_cannon_labels[3] = 10**self.binary_fit_cannon_labels[3]
-        self.binary_fit_cannon_labels[7] = 10**self.binary_fit_cannon_labels[7]
+        self.binary_fit_cannon_labels = op.binary_fit_cannon_labels.copy()
 
         # update spectrum attributes
         self.binary_fit_logLikelihood = -1*op.fun
@@ -331,5 +333,66 @@ class Spectrum(object):
         self.binary_model_residuals = self.flux - self.binary_model_flux
         self.delta_BIC = self.fit_BIC-self.binary_fit_BIC
 
+    def plot_binary(self):
+        spec_tick_kwargs = {'axis':'x', 'length':8, 'direction':'inout'}
+        fig = plt.figure(figsize=(15,10))
+        fig = plt.figure(constrained_layout=True, figsize=(13,7))
+        plt.rcParams['font.size']=13
+        gs = fig.add_gridspec(3, 4, wspace = 0, hspace = 0)
+        #gs.update(hspace=0)
+
+        # spectrum + single star fit + binary fit
+        ax1 = fig.add_subplot(gs[0:1, 0:3])
+        ax1.errorbar(self.wav, self.flux+1, self.sigma, 
+                color='k', ecolor='#E8E8E8', linewidth=1.75, elinewidth=4, zorder=0)
+        ax1.plot(self.wav, self.model_flux+1, 'r-', alpha=0.8)
+        ax1.plot(self.wav, self.binary_model_flux+1, '-', color='#4808c8', alpha=0.8)
+        ax1.plot(self.wav, self.model_residuals, 'r-', alpha=0.8)
+        ax1.plot(self.wav, self.binary_model_residuals, '-', color='#4808c8', alpha=0.8)
+        ax1.set_xlim(self.wav[0], self.wav[-1])
+        ax1.set_ylabel('normalized flux')
+        ax1.tick_params(**spec_tick_kwargs)
+        ax1.grid()
+
+        # single star + binary residuals
+        ax2 = fig.add_subplot(gs[1:2, 0:3])
+        ax2.errorbar(self.wav, self.flux+1, self.sigma, 
+                color='k', ecolor='#E8E8E8', linewidth=1.75, elinewidth=4, zorder=0)
+        ax2.plot(self.wav, self.model_flux+1, 'r-', alpha=0.8)
+        ax2.plot(self.wav, self.binary_model_flux+1, '-', color='#4808c8', alpha=0.8)
+        ax2.plot(self.wav, self.model_residuals, 'r-', alpha=0.8)
+        ax2.plot(self.wav, self.binary_model_residuals, '-', color='#4808c8', alpha=0.8)
+        ax2.set_ylabel('normalized flux')
+        ax2.set_xlim(5160,5190)
+        ax2.tick_params(**spec_tick_kwargs)
+        ax2.grid()
+
+        # binary model components
+        ax3 = fig.add_subplot(gs[2:, 0:3])
+        ax3.errorbar(self.wav, self.flux+1, self.sigma, 
+                color='k', ecolor='#E8E8E8', linewidth=1.75, elinewidth=4, zorder=0)
+        ax3.plot(self.wav, self.model_flux+1, 'r-', alpha=0.8)
+        ax3.plot(self.wav, self.binary_model_flux+1, '-', color='#4808c8', alpha=0.8)
+        ax3.plot(self.wav, self.model_residuals, 'r-', alpha=0.8)
+        ax3.plot(self.wav, self.binary_model_residuals, '-', color='#4808c8', alpha=0.8)
+        ax3.set_xlim(5220,5240)
+        ax3.set_xlabel('wavelength (nm)');ax3.set_ylabel('normalized flux')
+        ax3.tick_params(labelbottom=True, **spec_tick_kwargs)
+        ax3.grid()
+
+        # 1D histogram: delta chisq
+        ax4 = fig.add_subplot(gs[0:2, 3:])
+        ax4.plot(self.cool_cannon_model.training_set_labels.T[0], 
+            self.cool_cannon_model.training_set_labels.T[1], 
+             'o', color='lightgrey')
+        ax4.plot(self.hot_cannon_model.training_set_labels.T[0], 
+            self.hot_cannon_model.training_set_labels.T[1], 
+             'o', color='lightgrey')
+        ax4.plot(self.binary_fit_cannon_labels[0], self.binary_fit_cannon_labels[1], 'o', color='#4808c8', mec='k')
+        ax4.plot(self.binary_fit_cannon_labels[5], self.binary_fit_cannon_labels[6], 'o', color='#4808c8', mec='k')
+        ax4.plot(self.fit_cannon_labels[0], self.fit_cannon_labels[1], 'r*', ms=15, mec='k')
+        ax4.set_xlim(7000,2800);ax4.set_ylim(5.4,3.4)
+        ax4.set_yticks(np.arange(3.5,6,0.5))
+        ax4.set_xlabel('Teff (K)');ax4.set_ylabel('logg (dex)')
 
 
