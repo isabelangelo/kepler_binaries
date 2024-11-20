@@ -1,13 +1,21 @@
 from specmatchemp.spectrum import read_fits
 from rsync_utils import *
+import specmatchemp.library
 import pandas as pd
 import dwt
 import glob
 import os
 
-# rsync HIRES spectra of Raghavan 2010 single stars ============================================== 
-
+# load single star sample, remove training set stars
 raghavan2010_singles = pd.read_csv('./data/literature_data/Raghavan2010_singles_obs_ids.csv')
+lib = specmatchemp.library.read_hdf()
+training_set_table = lib.library_params.copy().query('snr>100')
+singles_in_training_set = raghavan2010_singles.resolvable_name.isin(
+	training_set_table.source_name.to_numpy())
+raghavan2010_singles = raghavan2010_singles[~singles_in_training_set]
+raghavan2010_singles['id_starname'] = [i.replace(' ', '') for i in raghavan2010_singles['resolvable_name']]
+
+# rsync HIRES spectra of Raghavan 2010 single stars ============================================== 
 # add row to match CKS obs_id row
 print('copying Raghavan 2010 single sample spectra from cadence')
 raghavan2010_singles['obs_id'] = ['r'+i for i in raghavan2010_singles.observation_id]
@@ -66,9 +74,8 @@ for order_n in range(1,17):
 		filename = '{}/{}_adj.fits'.format(
 			shifted_path,  
 			row.observation_id.replace('j','rj'))
-		id_starname = row.resolvable_name.replace(' ', '')
-		id_starname_list.append(id_starname) # save star name for column
-		print(id_starname, end=', ')
+		id_starname_list.append(row.id_starname) # save star name for column
+		print(row.id_starname, end=', ')
 
 		# load spectrum from file
 		# and resample to unclipped HIRES wavelength scale
@@ -98,8 +105,8 @@ for order_n in range(1,17):
 	sigma_df = pd.concat([sigma_df, sigma_df_n])
 
 # write flux, sigma to .csv files
-flux_path = '{}/raghavan_singles_flux_dwt.csv'.format(df_path)
-sigma_path = '{}/raghavan_singles_sigma_dwt.csv'.format(df_path)
+flux_path = '{}/raghavan_single_flux_dwt.csv'.format(df_path)
+sigma_path = '{}/raghavan_single_sigma_dwt.csv'.format(df_path)
 
 flux_df.to_csv(flux_path, index=False)
 sigma_df.to_csv(sigma_path, index=False)

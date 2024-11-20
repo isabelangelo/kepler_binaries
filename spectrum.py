@@ -158,10 +158,10 @@ class Spectrum(object):
         self.fit_cannon_labels[-2] = 10**self.fit_cannon_labels[-2]
         
         # update spectrum attributes
-        self.fit_logLikelihood = -1*op.fun
+        self.fit_logL = -1*op.fun
         self.fit_BIC = self.BIC(
                 len(self.fit_cannon_labels), 
-                self.fit_logLikelihood)
+                self.fit_logL)
         self.model_flux = np.interp(
             self.wav, 
             self.wav + self.wav * self.fit_cannon_labels[-1]/speed_of_light_kms, 
@@ -191,9 +191,9 @@ class Spectrum(object):
             
             Args:
                 primary_cannon_model (tc.CannonModel): Cannon model component used 
-                        for primary star
+                        for primary star (teff, logg, Fe/H, vsini, RV)
                 secondary_cannon_model (tc.CannonModel): Cannon model component used 
-                        for secondary star"""
+                        for secondary star (teff, logg, vsini, RV)"""
 
             # compute relative flux based on temperature
             W1, W2 = flux_weights(param1[0], param2[0], self.wav)
@@ -267,7 +267,7 @@ class Spectrum(object):
         op_brute = brute(negative_logL_wrapper, teff_ranges, finish=None)
         teff1_init, teff2_init = op_brute
         #print('total time for brute search: {} seconds'.format(time.time()-t0_brute))
-        print('initializing local search at Teff1={}, Teff2={}'.format(teff1_init, teff2_init))
+        #print('initializing local search at Teff1={}, Teff2={}'.format(teff1_init, teff2_init))
         
         # initial labels + step size for local minimizer based on brute search outputs
         initial_labels = np.array([teff1_init, logg1_init, feh1_init, vsini1_init, 0, \
@@ -285,7 +285,7 @@ class Spectrum(object):
             bounds = binary_op_bounds,
             method='Nelder-Mead',
             options={'initial_simplex':initial_simplex,'fatol':1,'xatol':1})
-        print('final Teff1={}, Teff2={}'.format(op_minimize.x[0], op_minimize.x[5]))
+        #print('final Teff1={}, Teff2={}'.format(op_minimize.x[0], op_minimize.x[5]))
         #print('total time for local optimizer: {} seconds'.format(time.time()-t0_minimize))
 
         # re-parameterize from log(vsini) to vsini
@@ -314,7 +314,7 @@ class Spectrum(object):
             'hot1_hot2': self.fit_binary_fixed_components(
                 self.hot_cannon_model, 
                 self.hot_cannon_model)}
-        print('total time = {} seconds'.format(time.time()-t0_fit))
+        #print('total time = {} seconds'.format(time.time()-t0_fit))
         
         # select best-fit binary from all regimes
         # (i.e., lowest -log(Likelihood))
@@ -325,10 +325,10 @@ class Spectrum(object):
         self.binary_fit_cannon_labels = op.binary_fit_cannon_labels.copy()
 
         # update spectrum attributes
-        self.binary_fit_logLikelihood = -1*op.fun
+        self.binary_fit_logL = -1*op.fun
         self.binary_fit_BIC = self.BIC(
             len(self.binary_fit_cannon_labels), 
-            self.binary_fit_logLikelihood)
+            self.binary_fit_logL)
         self.binary_model_flux = op.model_flux
         self.binary_model_residuals = self.flux - self.binary_model_flux
         self.delta_BIC = self.fit_BIC-self.binary_fit_BIC
