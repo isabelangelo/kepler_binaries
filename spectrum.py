@@ -48,6 +48,41 @@ class Spectrum(object):
         self.cool_cannon_model = cool_cannon_model
         self.hot_cannon_model = hot_cannon_model
 
+    def binary_model(self, param1, param2, primary_cannon_model, secondary_cannon_model):
+        """Calculate binary model associated with set of parameters
+        a particular set of model parameters. Also returns s2 associated with 
+        primary and secondary components (weighted based on relative flux)
+        
+        Args:
+            param1 (np.array): primary labels [teff1, logg1, feh1, vsini1, RV1]
+            param2 (np.array): secondary labels [teff2, logg2, feh2, vsini2, RV2]
+            primary_cannon_model (tc.CannonModel): Cannon model component used 
+                    for primary star (teff, logg, Fe/H, vsini, RV)
+            secondary_cannon_model (tc.CannonModel): Cannon model component used 
+                    for secondary star (teff, logg, vsini, RV)"""
+
+        # compute relative flux based on temperature
+        W1, W2 = flux_weights(param1[0], param2[0], self.wav)
+
+        # compute single star models for both components
+        flux1  = primary_cannon_model(param1[:-1])
+        flux2 = secondary_cannon_model(param2[:-1])
+        
+        # compute intrinsic model errors (s2)
+        s2_1 = W1*primary_cannon_model.s2
+        s2_2 = W2*secondary_cannon_model.s2
+
+        # shift flux1, flux2 according to drv
+        delta_w1 = self.wav * param1[-1]/speed_of_light_kms
+        delta_w2 = self.wav * param2[-1]/speed_of_light_kms
+        flux1_shifted = np.interp(self.wav, self.wav + delta_w1, flux1)
+        flux2_shifted = np.interp(self.wav, self.wav + delta_w2, flux2)
+
+        # compute weighted sum of primary, secondary
+        model = W1*flux1_shifted + W2*flux2_shifted
+
+        return model, s2_1, s2_2
+
     def op_bounds(self, cannon_model):
         """Determine bounds of scipy.opimize.minimize
         based on the minimum and maximum training set labels
@@ -184,39 +219,6 @@ class Spectrum(object):
                             (secondary_op_bounds[0],) + (secondary_op_bounds[1],) + \
                             (secondary_op_bounds[3],) + (secondary_op_bounds[4],)
         
-        def binary_model(param1, param2):
-            """Calculate binary model associated with set of parameters
-            a particular set of model parameters. Also returns s2 associated with 
-            primary and secondary components (weighted based on relative flux)
-            
-            Args:
-                primary_cannon_model (tc.CannonModel): Cannon model component used 
-                        for primary star (teff, logg, Fe/H, vsini, RV)
-                secondary_cannon_model (tc.CannonModel): Cannon model component used 
-                        for secondary star (teff, logg, vsini, RV)"""
-
-            # compute relative flux based on temperature
-            W1, W2 = flux_weights(param1[0], param2[0], self.wav)
-
-            # compute single star models for both components
-            flux1  = primary_cannon_model(param1[:-1])
-            flux2 = secondary_cannon_model(param2[:-1])
-            
-            # compute intrinsic model errors (s2)
-            s2_1 = W1*primary_cannon_model.s2
-            s2_2 = W2*secondary_cannon_model.s2
-
-            # shift flux1, flux2 according to drv
-            delta_w1 = self.wav * param1[-1]/speed_of_light_kms
-            delta_w2 = self.wav * param2[-1]/speed_of_light_kms
-            flux1_shifted = np.interp(self.wav, self.wav + delta_w1, flux1)
-            flux2_shifted = np.interp(self.wav, self.wav + delta_w2, flux2)
-
-            # compute weighted sum of primary, secondary
-            model = W1*flux1_shifted + W2*flux2_shifted
-
-            return model, s2_1, s2_2
-        
         def negative_logL(params):
             """Negative log-likelihood associated with set of composite Cannon model parameters.
             We use the Bayesian Likelihood formula for this calculation.
@@ -239,7 +241,12 @@ class Spectrum(object):
                 return np.inf
 
             # determine model, error term based on piecewise model
-            model, s2_primary, s2_secondary = binary_model(param1, param2)
+            model, s2_primary, s2_secondary = self.binary_model(
+                param1, 
+                param2,
+                primary_cannon_model,
+                secondary_cannon_model)
+
             sn2 = self.sigma**2 + s2_primary + s2_secondary
 
             # compute log-likelihood
@@ -295,9 +302,11 @@ class Spectrum(object):
         op_minimize.binary_fit_cannon_labels[7] = 10**op_minimize.binary_fit_cannon_labels[7]
         
         # store binary model flux associated with maximum likelihood
-        op_minimize.model_flux, _, _ = binary_model(
+        op_minimize.model_flux, _, _ = self.binary_model(
             op_minimize.binary_fit_cannon_labels[:5], 
-            op_minimize.binary_fit_cannon_labels[[5,6,2,7,8]])
+            op_minimize.binary_fit_cannon_labels[[5,6,2,7,8]],
+            primary_cannon_model,
+            secondary_cannon_model)
         
         return op_minimize
 
