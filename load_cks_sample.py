@@ -35,11 +35,6 @@ print(len(cks_cool_stars), 'after removing duplicate entries (kept highest SNR)'
  # remove KOI01871, since its already in CKS sample
 # cks_cool_stars = cks_cool_stars[cks_cool_stars.id_name!='K01871']
 
-# TEMPORARY: remove stars with large smsyn/smemp Teff discrepancy
-import pdb;pdb.set_trace()
-cks_cool_stars = cks_cool_stars.query('abs(smemp_teff-smsyn_teff)<100')
-print(len(cks_cool_stars), 'after removing stars with large smemp/smsyn Teff discrepancy')
-
 # rename columns of CKS sample
 cks_cols_to_keep = ['Name', 'Obs','Teff', 'e_Teff', 'logg', 'e_logg', \
                     '[Fe/H]', 'e_[Fe/H]','vsini', 'e_vsini']
@@ -84,7 +79,7 @@ stars_in_cks = cks_cool_stars['id_starname'].isin(cks_main_stars['id_starname'])
 cks_cool_stars = cks_cool_stars[~stars_in_cks]
 print(len(cks_cool_stars), 'after removing stars that also appear in CKS sample\n')
 
-# combine samples for training set
+# combine samples
 cks_stars = pd.concat([cks_main_stars, cks_cool_stars], ignore_index=True)
 print(len(cks_stars), 'in merged CKS + CKS-cool table')
 # remove stars with vsini>=11km/s (upper limit of specmatch training set)
@@ -103,21 +98,21 @@ print('table with CKS + CKS-cool stars ({} total) saved to {}'.format(
 # =================== transfer spectra from cadence =========================
 
 # copy over CKS stars
-# for index, row in cks_stars.iterrows():
-#     # filenames for rsync command
-#     obs_ids = [row.obs_id.replace('rj','bj'), row.obs_id, row.obs_id.replace('rj','ij')]
-#     for obs_id in obs_ids:
-#         obs_filename = obs_id+'.fits'
-#         if os.path.exists('./data/cks-spectra/'+obs_filename):
-#             print('{} already in ./data/cks-spectra/'.format(obs_filename))
-#             pass
-#         else:
-#             # write command
-#             command = "rsync observer@cadence.caltech.edu:/mir3/iodfitsdb/{} ./data/cks-spectra/{}".format(
-#                 obs_filename,
-#                 obs_filename)
-#             run_rsync(command)
-#     print('copied {} b,r,i chip spectra to ./data/cks-spectra/'.format(row.id_starname))
+for index, row in cks_stars.iterrows():
+    # filenames for rsync command
+    obs_ids = [row.obs_id.replace('rj','bj'), row.obs_id, row.obs_id.replace('rj','ij')]
+    for obs_id in obs_ids:
+        obs_filename = obs_id+'.fits'
+        if os.path.exists('./data/cks-spectra/'+obs_filename):
+            print('{} already in ./data/cks-spectra/'.format(obs_filename))
+            pass
+        else:
+            # write command
+            command = "rsync observer@cadence.caltech.edu:/mir3/iodfitsdb/{} ./data/cks-spectra/{}".format(
+                obs_filename,
+                obs_filename)
+            run_rsync(command)
+    print('copied {} b,r,i chip spectra to ./data/cks-spectra/'.format(row.id_starname))
 
 
 # ================== shift + register spectra =============================================
@@ -191,7 +186,7 @@ flux_df_dwt, sigma_df_dwt = cks_sample_data(True)
 flux_df_dwt.to_csv('{}/cks_flux_dwt.csv'.format(df_path), index=False)
 sigma_df_dwt.to_csv('{}/cks_sigma_dwt.csv'.format(df_path), index=False)
 print('wavelet-filtered CKS spectra saved to .csv files')
-flux_df_original, sigma_df_original = cks_sample_data(False)
-flux_df_original.to_csv('{}/cks_flux_original.csv'.format(df_path), index=False)
-sigma_df_original.to_csv('{}/cks_sigma_original.csv'.format(df_path), index=False)
-print('original CKS spectra saved to .csv files')
+# flux_df_original, sigma_df_original = cks_sample_data(False)
+# flux_df_original.to_csv('{}/cks_flux_original.csv'.format(df_path), index=False)
+# sigma_df_original.to_csv('{}/cks_sigma_original.csv'.format(df_path), index=False)
+# print('original CKS spectra saved to .csv files')

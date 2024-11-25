@@ -273,6 +273,7 @@ class Spectrum(object):
         initial_labels = np.array([teff1_init, logg1_init, feh1_init, vsini1_init, 0, \
                   teff2_init, logg2_init, vsini2_init, 0])
         initial_steps = [50, 0.1, 0.01, 0.1, 0.5, 50, 0.1, 0.1, 0.5]
+        #initial_steps = [10, 0.1, 0.01, 0.1, 0.5, 10, 0.1, 0.1, 0.5]
         initial_simplex = [initial_labels] + [np.array(initial_labels) + \
                                               np.eye(len(initial_labels))[i] * initial_steps[i]\
                                               for i in range(len(initial_labels))]
@@ -344,15 +345,20 @@ class Spectrum(object):
         # spectrum + single star fit + binary fit
         ax1 = fig.add_subplot(gs[0:1, 0:3])
         ax1.errorbar(self.wav, self.flux+1, self.sigma, 
-                color='k', ecolor='#E8E8E8', linewidth=1.75, elinewidth=4, zorder=0)
-        ax1.plot(self.wav, self.model_flux+1, 'r-', alpha=0.8)
-        ax1.plot(self.wav, self.binary_model_flux+1, '-', color='#4808c8', alpha=0.8)
+                color='k', ecolor='#E8E8E8', linewidth=1.75, elinewidth=4, zorder=0,
+                label='HIRES spectrum')
+        ax1.plot(self.wav, self.model_flux+1, 'r-', alpha=0.8, label='best-fit single star')
+        ax1.plot(self.wav, self.binary_model_flux+1, '-', color='#4808c8', alpha=0.8,
+                label=r'best-fit binary ($\Delta{\rm BIC}$ = '+str(round(self.delta_BIC, 2))+')')
         ax1.plot(self.wav, self.model_residuals, 'r-', alpha=0.8)
         ax1.plot(self.wav, self.binary_model_residuals, '-', color='#4808c8', alpha=0.8)
         ax1.set_xlim(self.wav[0], self.wav[-1])
         ax1.set_ylabel('normalized flux')
         ax1.tick_params(**spec_tick_kwargs)
-        ax1.grid()
+        ax1.grid();ax1.set_ylim(-0.2,1.4)
+        ax1.text(5000,1.2,'best-fit single star', c='r')
+        ax1.text(5100,1.2,r'best-fit binary ($\Delta{\rm BIC}$ = '+str(round(self.delta_BIC, 2))+')', 
+            c='b')
 
         # single star + binary residuals
         ax2 = fig.add_subplot(gs[1:2, 0:3])

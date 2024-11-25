@@ -6,39 +6,44 @@ import dwt
 import glob
 import os
 
-# unresolved binary sample
-kraus_unresolved_binaries = pd.read_csv('./data/literature_data/Kraus_unresolved_binary_obs_ids.csv')
-kraus_unresolved_binaries['id_starname'] = [i.replace(' ', '') for i in kraus_unresolved_binaries['resolvable_name']]
+# load single star sample, remove training set stars
+raghavan2010_singles = pd.read_csv('./data/literature_data/Raghavan2010_singles_obs_ids.csv')
+lib = specmatchemp.library.read_hdf()
+training_set_table = lib.library_params.copy().query('snr>100')
+singles_in_training_set = raghavan2010_singles.resolvable_name.isin(
+	training_set_table.source_name.to_numpy())
+raghavan2010_singles = raghavan2010_singles[~singles_in_training_set]
+raghavan2010_singles['id_starname'] = [i.replace(' ', '') for i in raghavan2010_singles['resolvable_name']]
 
 # rsync HIRES spectra of Raghavan 2010 single stars ============================================== 
 # add row to match CKS obs_id row
-print('copying Kraus unrsolved binary sample spectra from cadence')
-kraus_unresolved_binaries['obs_id'] = ['r'+i for i in kraus_unresolved_binaries.observation_id]
-for index, row in kraus_unresolved_binaries.iterrows():
+print('copying Raghavan 2010 single sample spectra from cadence')
+raghavan2010_singles['obs_id'] = ['r'+i for i in raghavan2010_singles.observation_id]
+for index, row in raghavan2010_singles.iterrows():
     obs_ids = [row.observation_id.replace('rj','bj'), row.obs_id, row.obs_id.replace('rj','ij')]
     for obs_id in obs_ids:
         obs_filename = obs_id+'.fits'
-        if os.path.exists('./data/kraus_unresolved_binary_spectra/'+obs_filename):
-            print('{} already in ./data/kraus_unresolved_binary_spectra/'.format(obs_filename))
+        if os.path.exists('./data/raghavan2010_singles_spectra/'+obs_filename):
+            print('{} already in ./data/raghavan2010_singles_spectra/'.format(obs_filename))
             pass
         else:
             # write command
-            command = "rsync observer@cadence.caltech.edu:/mir3/iodfitsdb/{} ./data/kraus_unresolved_binary_spectra/{}".format(
+            command = "rsync observer@cadence.caltech.edu:/mir3/iodfitsdb/{} ./data/raghavan2010_singles_spectra/{}".format(
                 obs_filename,
                 obs_filename)
             run_rsync(command)
-    print('copied {} b,r,i chip spectra to ./data/kraus_unresolved_binary_spectra/'.format(row.resolvable_name))
+    print('copied {} b,r,i chip spectra to ./data/raghavan2010_singles_spectra/'.format(row.resolvable_name))
 
 
 # shift and register spectra with specmatch-emp ========================================================
 
-print('shifting and registering Kraus unrsolved binary spectra for binary model validation')
-kraus_spectrum_ids = [i[40:-5] for i in glob.glob('./data/kraus_unresolved_binary_spectra/ij*.fits')]
-for spectrum_id in kraus_spectrum_ids:
-	input_path = './data/kraus_unresolved_binary_spectra'
-	output_path = './data/kraus_unresolved_binary_spectra_shifted'
+print('shifting and registering Raghavan 2010 single spectra for binary model validation')
+raghavan2010_spectrum_ids = [i[37:-5] for i in glob.glob('./data/raghavan2010_singles_spectra/ij*.fits')]
+for spectrum_id in raghavan2010_spectrum_ids:
+	input_path = './data/raghavan2010_singles_spectra'
+	output_path = './data/raghavan2010_singles_spectra_shifted'
 	if os.path.exists(output_path+'/r{}_adj.fits'.format(spectrum_id)):
-		print('{} already in ./data/kraus_unresolved_binary_spectra_shifted/'.format(spectrum_id))
+		print('{} already in ./data/raghavan2010_singles_spectra_shifted/'.format(spectrum_id))
 		pass
 	else:
 		command = 'smemp shift -d {} -o {} {}'.format(
@@ -51,7 +56,7 @@ for spectrum_id in kraus_spectrum_ids:
 # store wavelet-filtered fluxes ==================================================================
 
 df_path = './data/spectrum_dataframes'
-shifted_path = './data/kraus_unresolved_binary_spectra_shifted'
+shifted_path = './data/raghavan2010_singles_spectra_shifted'
 print('saving wavelet-filtered flux, sigma to dataframes')
 flux_df = pd.DataFrame()
 sigma_df = pd.DataFrame()
@@ -64,7 +69,7 @@ for order_n in range(1,17):
 	order_idx = order_n - 1
 
 	# get order data for all stars in training set
-	for idx, row in kraus_unresolved_binaries.iterrows():
+	for idx, row in raghavan2010_singles.iterrows():
 		# load file data
 		filename = '{}/{}_adj.fits'.format(
 			shifted_path,  
@@ -100,14 +105,15 @@ for order_n in range(1,17):
 	sigma_df = pd.concat([sigma_df, sigma_df_n])
 
 # write flux, sigma to .csv files
-flux_path = '{}/kraus_binary_flux_dwt.csv'.format(df_path)
-sigma_path = '{}/kraus_binary_sigma_dwt.csv'.format(df_path)
+flux_path = '{}/raghavan_single_flux_dwt.csv'.format(df_path)
+sigma_path = '{}/raghavan_single_sigma_dwt.csv'.format(df_path)
 
 flux_df.to_csv(flux_path, index=False)
 sigma_df.to_csv(sigma_path, index=False)
 print('wavelet-filtered spectra saved to:')
 print(flux_path)
 print(sigma_path)
+
 
 
 
