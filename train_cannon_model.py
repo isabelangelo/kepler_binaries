@@ -28,6 +28,14 @@ training_set_table = training_set_table.query('snr>100')
 training_set_table = training_set_table[~training_set_table['source_name'].str.contains('GJ570')]
 training_set_table = training_set_table[~training_set_table['source_name'].str.contains('Gl 896A')]
 
+# add resolution/PSF information from specmatch 
+specmatch_psf_results = pd.read_csv('./data/literature_data/specmatch_results.csv')
+training_set_table = pd.merge(
+	training_set_table, 
+	specmatch_psf_results[['obs','psf']], 
+	left_on='lib_obs', 
+	right_on='obs')
+
 # =============== handle vsini upper limits =========================================
 
 # add ladder of broadened spectra for rows with vsini upper limits
@@ -100,7 +108,8 @@ def broaden(vsini, spec):
 
 # rewrite columns and save to file
 training_set_table = training_set_table.rename(columns=
-    {'Teff':'smemp_teff','logg':'smemp_logg', 'feh':'smemp_feh','vsini':'smemp_vsini'})
+    {'Teff':'smemp_teff','logg':'smemp_logg', 'feh':'smemp_feh',
+    'vsini':'smemp_vsini','obs':'smemp_obs', 'psf':'smemp_psf'})
 training_set_table = training_set_table.astype(
     {'smemp_teff': 'float32', 
      'smemp_logg': 'float32', 
@@ -341,7 +350,7 @@ def train_and_validate_piecewise_model(order_numbers, model_suffix, filter_type=
 
 # TEMPORARY: 
 # adopted orders 1-7, wavelet-filtered
-train_and_validate_piecewise_model([i for i in range(1,7)], 'orders_1-6_dwt_nov12')
+train_and_validate_piecewise_model([i for i in range(1,7)], 'orders_1-6_dwt_nov27')
 
 # # individual orders, wavelet-filtered
 # for order_n in range(1,17):

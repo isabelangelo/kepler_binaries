@@ -48,7 +48,8 @@ class Spectrum(object):
         self.cool_cannon_model = cool_cannon_model
         self.hot_cannon_model = hot_cannon_model
 
-    def binary_model(self, param1, param2, primary_cannon_model, secondary_cannon_model):
+    def binary_model(self, param1, param2, 
+        primary_cannon_model, secondary_cannon_model, return_components=False):
         """Calculate binary model associated with set of parameters
         a particular set of model parameters. Also returns s2 associated with 
         primary and secondary components (weighted based on relative flux)
@@ -59,7 +60,17 @@ class Spectrum(object):
             primary_cannon_model (tc.CannonModel): Cannon model component used 
                     for primary star (teff, logg, Fe/H, vsini, RV)
             secondary_cannon_model (tc.CannonModel): Cannon model component used 
-                    for secondary star (teff, logg, vsini, RV)"""
+                    for secondary star (teff, logg, vsini, RV)
+            return_components (bool): if True, returns component fluxes instead of
+                    returning the composite spectrum
+        Returns:
+            model (np.array): binary model flux
+            s2_1 (np.array): weighted errors associated with model primary
+            s2_2 (np.array): weighted errors associated with model secondary
+
+            *if return_components=True, returns model_primary + model_secondary
+            instead of composite model + associated errors
+            """
 
         # compute relative flux based on temperature
         W1, W2 = flux_weights(param1[0], param2[0], self.wav)
@@ -78,10 +89,18 @@ class Spectrum(object):
         flux1_shifted = np.interp(self.wav, self.wav + delta_w1, flux1)
         flux2_shifted = np.interp(self.wav, self.wav + delta_w2, flux2)
 
-        # compute weighted sum of primary, secondary
-        model = W1*flux1_shifted + W2*flux2_shifted
+        # compute weighted + shifted fluxes
+        model_primary = W1*flux1_shifted
+        model_secondary = W2*flux2_shifted
 
-        return model, s2_1, s2_2
+        # determine model output based on return_components
+        if return_components:
+            # return spectra of primary, secondary
+            return model_primary, model_secondary
+        else:
+            # compute weighted sum of primary, secondary
+            model = W1*flux1_shifted + W2*flux2_shifted
+            return model, s2_1, s2_2
 
     def op_bounds(self, cannon_model):
         """Determine bounds of scipy.opimize.minimize
@@ -140,6 +159,8 @@ class Spectrum(object):
             term_in_brackets = (self.flux - model_shifted)**2/sn2 + np.log(2*np.pi*sn2)
             negative_logLikelihood = (1/2)*np.sum(term_in_brackets)
 
+            #print(param[-1], negative_logLikelihood)
+
             return negative_logLikelihood
 
         # determine initial labels
@@ -170,7 +191,6 @@ class Spectrum(object):
             args=(self.cool_cannon_model), 
             bounds = self.op_bounds(self.cool_cannon_model),
             method = 'Nelder-Mead')
-        
         op_hot = minimize(
             negative_logL, 
             hot_param_init, 
@@ -189,11 +209,11 @@ class Spectrum(object):
             self.fit_model = 'hot'
                 
         # re-parameterize from log(vsini) to vsini
-        self.fit_cannon_labels = op.x
+        self.fit_cannon_labels = op.x.copy()
         self.fit_cannon_labels[-2] = 10**self.fit_cannon_labels[-2]
         
         # update spectrum attributes
-        self.fit_logL = -1*op.fun
+        self.fit_logL = -1*op.fun.copy()
         self.fit_BIC = self.BIC(
                 len(self.fit_cannon_labels), 
                 self.fit_logL)
@@ -201,7 +221,7 @@ class Spectrum(object):
             self.wav, 
             self.wav + self.wav * self.fit_cannon_labels[-1]/speed_of_light_kms, 
             fit_cannon_model(self.fit_cannon_labels[:-1]))
-        self.model_residuals = self.flux - self.model_flux
+        self.model_residuals = self.model_flux - self.flux
 
     def fit_binary_fixed_components(self, primary_cannon_model, secondary_cannon_model):
         # initial conditions based on component cannon models
@@ -253,6 +273,8 @@ class Spectrum(object):
             term_in_brackets = (self.flux - model)**2/sn2 + np.log(2*np.pi*sn2)
             negative_logLikelihood = (1/2)*np.sum(term_in_brackets)
 
+            #print([round(i,2) for i in [param1[-1], param2[-1], negative_logLikelihood]])
+
             return negative_logLikelihood
             
         def negative_logL_wrapper(teff_params):
@@ -279,8 +301,10 @@ class Spectrum(object):
         # initial labels + step size for local minimizer based on brute search outputs
         initial_labels = np.array([teff1_init, logg1_init, feh1_init, vsini1_init, 0, \
                   teff2_init, logg2_init, vsini2_init, 0])
-        initial_steps = [50, 0.1, 0.01, 0.1, 0.5, 50, 0.1, 0.1, 0.5]
-        #initial_steps = [10, 0.1, 0.01, 0.1, 0.5, 10, 0.1, 0.1, 0.5]
+        initial_steps = [50, 0.2, 0.03, 0.3, 0.5, 50, 0.2, 0.3, 0.5]  # current test version
+        # initial_steps = [50, 0.2, 0.03, 0.3, 1, 50, 0.2, 0.3, 1] # tweaked version, better than original
+        #initial_steps = [10, 0.1, 0.01, 0.1, 0.5, 10, 0.1, 0.1, 0.5] # original version
+        
         initial_simplex = [initial_labels] + [np.array(initial_labels) + \
                                               np.eye(len(initial_labels))[i] * initial_steps[i]\
                                               for i in range(len(initial_labels))]
@@ -340,12 +364,11 @@ class Spectrum(object):
             len(self.binary_fit_cannon_labels), 
             self.binary_fit_logL)
         self.binary_model_flux = op.model_flux
-        self.binary_model_residuals = self.flux - self.binary_model_flux
+        self.binary_model_residuals = self.binary_model_flux - self.flux
         self.delta_BIC = self.fit_BIC-self.binary_fit_BIC
 
     def plot_binary(self):
         spec_tick_kwargs = {'axis':'x', 'length':8, 'direction':'inout'}
-        fig = plt.figure(figsize=(15,10))
         fig = plt.figure(constrained_layout=True, figsize=(13,7))
         plt.rcParams['font.size']=13
         gs = fig.add_gridspec(3, 4, wspace = 0, hspace = 0)
@@ -382,7 +405,7 @@ class Spectrum(object):
         ax2.tick_params(**spec_tick_kwargs)
         ax2.grid()
 
-        # binary model components
+        # second panel with residuals
         ax3 = fig.add_subplot(gs[2:, 0:3])
         ax3.errorbar(self.wav, self.flux+1, self.sigma, 
                 color='k', ecolor='#E8E8E8', linewidth=1.75, elinewidth=4, zorder=0)

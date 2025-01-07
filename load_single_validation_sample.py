@@ -65,6 +65,7 @@ for order_n in range(1,17):
 	id_starname_list = []
 	flux_list = []
 	sigma_list = []
+
 	# order index for wavelength re-scaling
 	order_idx = order_n - 1
 
@@ -105,6 +106,7 @@ for order_n in range(1,17):
 	sigma_df = pd.concat([sigma_df, sigma_df_n])
 
 # write flux, sigma to .csv files
+# NOTE: to save original flux, just change filter_wavelets in L90 and run this code.
 flux_path = '{}/raghavan_single_flux_dwt.csv'.format(df_path)
 sigma_path = '{}/raghavan_single_sigma_dwt.csv'.format(df_path)
 
@@ -113,10 +115,6 @@ sigma_df.to_csv(sigma_path, index=False)
 print('wavelet-filtered spectra saved to:')
 print(flux_path)
 print(sigma_path)
-
-
-
-
 
 
 
