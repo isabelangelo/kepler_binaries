@@ -33,8 +33,9 @@ raghavan2010_singles = pd.merge(
 columns_to_keep = ['id_starname','lib_obs','Teff','logg','[M/H]', 'Vsini','psf']
 raghavan2010_singles = raghavan2010_singles[columns_to_keep].rename(columns=
     {'Teff':'spocs_teff','logg':'spocs_logg', '[M/H]':'spocs_feh',
-    'Vsini':'spocs_vsini','psf':'smemp_psd'})
+    'Vsini':'spocs_vsini','psf':'smemp_psf'})
 raghavan2010_singles.to_csv('./data/label_and_metric_dataframes/raghavan_single_labels.csv', index=False)
+import pdb;pdb.set_trace()
 
 # rsync HIRES spectra of Raghavan 2010 single stars ============================================== 
 # add row to match CKS obs_id row
