@@ -1,4 +1,5 @@
 from specmatchemp.spectrum import read_fits
+from astropy.table import Table
 from rsync_utils import *
 import specmatchemp.library
 import pandas as pd
@@ -14,6 +15,26 @@ singles_in_training_set = raghavan2010_singles.resolvable_name.isin(
 	training_set_table.source_name.to_numpy())
 raghavan2010_singles = raghavan2010_singles[~singles_in_training_set]
 raghavan2010_singles['id_starname'] = [i.replace(' ', '') for i in raghavan2010_singles['resolvable_name']]
+raghavan2010_singles['lib_obs'] = [i.replace('j', 'rj') for i in raghavan2010_singles['observation_id']]
+
+# add labels from SPOCS/specmatch
+specmatch_psf_results = pd.read_csv('./data/literature_data/specmatch_results.csv')
+spocs_labels = Table.read('./data/literature_data/Brewer2016_Table8.fits', format='fits').to_pandas()
+spocs_labels['id_starname'] = spocs_labels['Name'].str.decode('utf-8').str.replace(' ', '')
+raghavan2010_singles = pd.merge(
+	raghavan2010_singles, 
+	specmatch_psf_results[['obs','psf']],
+	left_on='lib_obs', 
+	right_on='obs')
+raghavan2010_singles = pd.merge(
+	raghavan2010_singles, 
+	spocs_labels[['id_starname','Teff','logg','[M/H]','Vsini']], 
+	on='id_starname')
+columns_to_keep = ['id_starname','lib_obs','Teff','logg','[M/H]', 'Vsini','psf']
+raghavan2010_singles = raghavan2010_singles[columns_to_keep].rename(columns=
+    {'Teff':'spocs_teff','logg':'spocs_logg', '[M/H]':'spocs_feh',
+    'Vsini':'spocs_vsini','psf':'smemp_psd'})
+raghavan2010_singles.to_csv('./data/label_and_metric_dataframes/raghavan_single_labels.csv', index=False)
 
 # rsync HIRES spectra of Raghavan 2010 single stars ============================================== 
 # add row to match CKS obs_id row
