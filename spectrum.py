@@ -55,12 +55,12 @@ class Spectrum(object):
         primary and secondary components (weighted based on relative flux)
         
         Args:
-            param1 (np.array): primary labels [teff1, logg1, feh1, vsini1, RV1]
-            param2 (np.array): secondary labels [teff2, logg2, feh2, vsini2, RV2]
+            param1 (np.array): primary labels [teff1, logg1, feh1, vsini1, PSF1, RV1]
+            param2 (np.array): secondary labels [teff2, logg2, feh2, vsini2, PSF2, RV2]
             primary_cannon_model (tc.CannonModel): Cannon model component used 
-                    for primary star (teff, logg, Fe/H, vsini, RV)
+                    for primary star (teff, logg, Fe/H, vsini, PSF, RV)
             secondary_cannon_model (tc.CannonModel): Cannon model component used 
-                    for secondary star (teff, logg, vsini, RV)
+                    for secondary star (teff, logg, Fe/H, vsini, PSF, RV)
             return_components (bool): if True, returns component fluxes instead of
                     returning the composite spectrum
         Returns:
@@ -117,8 +117,8 @@ class Spectrum(object):
 
         # re-parameterize from vsini to log(vsini)
         # note: log(vsini)=-2-1 is vsini=0.01-10km/s
-        min_bounds[-2] = -2
-        max_bounds[-2] = 1
+        min_bounds[-3] = -2
+        max_bounds[-3] = 1
 
         return tuple(zip(min_bounds, max_bounds))
     
@@ -143,23 +143,23 @@ class Spectrum(object):
             We use the Bayesian Likelihood formula for this calculation.
             """
             # re-parameterize from log(vsini) to vsini
-            param[-2] = 10**param[-2]
+            param[-3] = 10**param[-3]
 
             # determine model, error term based on piecewise model
             sn2 = self.sigma**2 + cannon_model.s2
 
             # evaluate cannon model at labels of interest
             model = cannon_model(param[:-1])
-            
+
             # apply RV shift
             delta_w = self.wav * param[-1]/speed_of_light_kms
             model_shifted = np.interp(self.wav, self.wav + delta_w, model)
-        
+
             # compute log-likelihood
             term_in_brackets = (self.flux - model_shifted)**2/sn2 + np.log(2*np.pi*sn2)
             negative_logLikelihood = (1/2)*np.sum(term_in_brackets)
 
-            #print(param[-1], negative_logLikelihood)
+            #print([round(i,2) for i in param], negative_logLikelihood)
 
             return negative_logLikelihood
 
@@ -168,9 +168,9 @@ class Spectrum(object):
         hot_param_init = self.hot_cannon_model._fiducials.copy()[2:].tolist() + [0]
 
         # re-parameterize from vsini to log(vsini)
-        cool_param_init[-2] = np.log10(cool_param_init[-2])
-        hot_param_init[-2] = np.log10(hot_param_init[-2])
-        
+        cool_param_init[-3] = np.log10(cool_param_init[-3])
+        hot_param_init[-3] = np.log10(hot_param_init[-3])
+
         # coarse brute search to determine initial Teff, logg
         teff_hr = [3000, 3500, 4000, 4500, 5000, 5500, 5750, 6000, 6500, 5250]
         logg_hr = [5, 4.8, 4.7, 4.6, 4.5, 4.45, 4, 4.35, 4.15, 3.8]
@@ -197,7 +197,7 @@ class Spectrum(object):
             args=(self.hot_cannon_model), 
             bounds = self.op_bounds(self.hot_cannon_model),
             method = 'Nelder-Mead')
-        
+
         # select best-fit between hot + cool models
         if op_cool.fun<op_hot.fun:
             op = op_cool
@@ -207,11 +207,12 @@ class Spectrum(object):
             op = op_hot
             fit_cannon_model = self.hot_cannon_model
             self.fit_model = 'hot'
-                
+            
         # re-parameterize from log(vsini) to vsini
         self.fit_cannon_labels = op.x.copy()
-        self.fit_cannon_labels[-2] = 10**self.fit_cannon_labels[-2]
-        
+        self.fit_cannon_labels[-3] = 10**self.fit_cannon_labels[-3]
+
+
         # update spectrum attributes
         self.fit_logL = -1*op.fun.copy()
         self.fit_BIC = self.BIC(
@@ -225,8 +226,8 @@ class Spectrum(object):
 
     def fit_binary_fixed_components(self, primary_cannon_model, secondary_cannon_model):
         # initial conditions based on component cannon models
-        _, logg1_init, feh1_init, vsini1_init = primary_cannon_model._fiducials.copy()
-        _, logg2_init, _, vsini2_init = secondary_cannon_model._fiducials.copy()
+        _, logg1_init, feh1_init, vsini1_init, psf1_init = primary_cannon_model._fiducials.copy()
+        _, logg2_init, _, vsini2_init, _ = secondary_cannon_model._fiducials.copy()
         
         # re-parameterize from vsini to log(vsini)
         vsini1_init, vsini2_init = np.log10(vsini1_init), np.log10(vsini2_init)

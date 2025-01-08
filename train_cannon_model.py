@@ -133,9 +133,9 @@ training_set_table_hot.to_csv('./data/label_and_metric_dataframes/training_label
 
 # store columns with labels for training
 training_set_hot = Table.from_pandas(
-    training_set_table_hot[['smemp_teff', 'smemp_logg', 'smemp_feh', 'smemp_vsini']])
+    training_set_table_hot[['smemp_teff', 'smemp_logg', 'smemp_feh', 'smemp_vsini', 'smemp_psf']])
 training_set_cool = Table.from_pandas(
-    training_set_table_cool[['smemp_teff', 'smemp_logg', 'smemp_feh', 'smemp_vsini']])
+    training_set_table_cool[['smemp_teff', 'smemp_logg', 'smemp_feh', 'smemp_vsini', 'smemp_psf']])
 
 # write clipped wavelength data to reference file
 # (this is used to rescale specmatch spectra 
@@ -237,17 +237,17 @@ import time
 t0=time.time()
 
 # wavelet-filtered flux + flux errors, hot + cool stars	
-save_training_data(training_set_table_hot, 'dwt_hot', filter_wavelets=True)
-print('wavelet-filtered training flux and sigma for hot stars saved to .csv files')	
-save_training_data(training_set_table_cool, 'dwt_cool', filter_wavelets=True)
-print('wavelet-filtered training flux and sigma for cool stars saved to .csv files')
+# save_training_data(training_set_table_hot, 'dwt_hot', filter_wavelets=True)
+# print('wavelet-filtered training flux and sigma for hot stars saved to .csv files')	
+# save_training_data(training_set_table_cool, 'dwt_cool', filter_wavelets=True)
+# print('wavelet-filtered training flux and sigma for cool stars saved to .csv files')
 
-# original flux + flux errors, hot + cool stars		
-save_training_data(training_set_table_hot, 'original_hot', filter_wavelets=False)
-print('wavelet-filtered training flux and sigma for hot stars saved to .csv files')
-save_training_data(training_set_table_cool, 'original_cool', filter_wavelets=False)
-print('wavelet-filtered training flux and sigma for cool stars saved to .csv files')
-print('total time to load training data = {} seconds'.format(time.time()-t0))
+# # original flux + flux errors, hot + cool stars		
+# save_training_data(training_set_table_hot, 'original_hot', filter_wavelets=False)
+# print('wavelet-filtered training flux and sigma for hot stars saved to .csv files')
+# save_training_data(training_set_table_cool, 'original_cool', filter_wavelets=False)
+# print('wavelet-filtered training flux and sigma for cool stars saved to .csv files')
+# print('total time to load training data = {} seconds'.format(time.time()-t0))
 
 # =============== functions to train model + save validation plots =============================
 
@@ -303,7 +303,7 @@ def train_cannon_model(order_numbers, model_suffix, piecewise_component,
 
 	# Create a vectorizer that defines our model form.
 	vectorizer = tc.vectorizer.PolynomialVectorizer(
-		['smemp_teff', 'smemp_logg', 'smemp_feh','smemp_vsini'], 2)
+		['smemp_teff', 'smemp_logg', 'smemp_feh','smemp_vsini', 'smemp_psf'], 2)
 
 	# Create the model that will run in parallel using all available cores.
 	model = tc.CannonModel(training_set, normalized_flux, normalized_ivar,
@@ -349,8 +349,8 @@ def train_and_validate_piecewise_model(order_numbers, model_suffix, filter_type=
 # ====================== train individual cannon models ============================================
 
 # TEMPORARY: 
-# adopted orders 1-7, wavelet-filtered
-train_and_validate_piecewise_model([i for i in range(1,7)], 'orders_1-6_dwt_nov27')
+# order 4 only with PSF as a training label
+train_and_validate_piecewise_model([4], 'order4_dwt_withPSF')
 
 # # individual orders, wavelet-filtered
 # for order_n in range(1,17):

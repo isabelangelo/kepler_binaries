@@ -17,7 +17,7 @@ def leave20pout_label_df(cool_cannon_model, hot_cannon_model, cool_label_df, hot
     cross-validation of piecewise Cannon model with hot + cool components."""
 
     # define training set labels
-    smemp_keys = ['smemp_teff', 'smemp_logg', 'smemp_feh', 'smemp_vsini']
+    smemp_keys = ['smemp_teff', 'smemp_logg', 'smemp_feh', 'smemp_vsini', 'smemp_psf']
     cannon_keys = [i.replace('smemp', 'cannon') for i in smemp_keys] + ['cannon_rv']
     keys = ['id_starname'] + smemp_keys + cannon_keys + ['fit_logL','fit_model','snr']
     vectorizer = tc.vectorizer.PolynomialVectorizer(smemp_keys, 2)
@@ -73,7 +73,7 @@ def leave20pout_label_df(cool_cannon_model, hot_cannon_model, cool_label_df, hot
                 cool_cannon_model_leave1out,
                 hot_cannon_model_leave1out)
             spec.fit_single_star()
-            cannon_labels = spec.fit_cannon_labels          
+            cannon_labels = spec.fit_cannon_labels         
 
             # store relevant metrics for dataframe
             values = [spectrum_row.id_starname]+smemp_labels.tolist() + \
@@ -143,58 +143,65 @@ def plot_label_one2one(x, y):
 	return bias, rms
 
 def plot_one2one(cannon_label_df, model_suffix):
-	"""
-	Generates a one-to-one plot of the known training labels
-	and Cannon-inferred labels for the training vallidation sample,
-	as computed by a particular Cannon model of interest.
-	"""
-	plt.figure(figsize=(15,3))
-	plt.subplot(141)
-	teff_bias, teff_rms = plot_label_one2one(
-	    cannon_label_df.smemp_teff, 
-	    cannon_label_df.cannon_teff)
-	plt.plot([4000,7000],[4000,7000],'b-')
-	plt.xlabel('specmatch library Teff (K)');plt.ylabel('Cannon Teff (K)')
+    """
+    Generates a one-to-one plot of the known training labels
+    and Cannon-inferred labels for the training vallidation sample,
+    as computed by a particular Cannon model of interest.
+    """
+    plt.figure(figsize=(15,6))
+    plt.subplot(231)
+    teff_bias, teff_rms = plot_label_one2one(
+        cannon_label_df.smemp_teff, 
+        cannon_label_df.cannon_teff)
+    plt.plot([4000,7000],[4000,7000],'b-')
+    plt.xlabel('specmatch library Teff (K)');plt.ylabel('Cannon Teff (K)')
 
-	plt.subplot(142)
-	logg_bias, logg_rms = plot_label_one2one(
-	    cannon_label_df.smemp_logg, 
-	    cannon_label_df.cannon_logg)
-	plt.plot([2.3,5],[2.3,5],'b-')
-	plt.xlabel('specmatch library logg (dex)');plt.ylabel('Cannon logg (dex)')
+    plt.subplot(232)
+    logg_bias, logg_rms = plot_label_one2one(
+        cannon_label_df.smemp_logg, 
+        cannon_label_df.cannon_logg)
+    plt.plot([2.3,5],[2.3,5],'b-')
+    plt.xlabel('specmatch library logg (dex)');plt.ylabel('Cannon logg (dex)')
 
-	plt.subplot(143)
-	feh_bias, feh_rms = plot_label_one2one(
-	    cannon_label_df.smemp_feh, 
-	    cannon_label_df.cannon_feh)
-	plt.plot([-1.1,0.6],[-1.1,0.6],'b-')
-	plt.xlabel('specmatch library Fe/H (dex)');plt.ylabel('Cannon Fe/H (dex)')
+    plt.subplot(233)
+    feh_bias, feh_rms = plot_label_one2one(
+        cannon_label_df.smemp_feh, 
+        cannon_label_df.cannon_feh)
+    plt.plot([-1.1,0.6],[-1.1,0.6],'b-')
+    plt.xlabel('specmatch library Fe/H (dex)');plt.ylabel('Cannon Fe/H (dex)')
 
-	plt.subplot(144)
-	vsini_bias, vsini_rms = plot_label_one2one(
-	    cannon_label_df.smemp_vsini, 
-	    cannon_label_df.cannon_vsini)
-	plt.plot([0,20],[0,20], 'b-')
-	plt.xlabel('specmatch library vsini (km/s)');plt.ylabel('Cannon vsini (km/s)')
+    plt.subplot(234)
+    vsini_bias, vsini_rms = plot_label_one2one(
+        cannon_label_df.smemp_vsini, 
+        cannon_label_df.cannon_vsini)
+    plt.plot([0,20],[0,20], 'b-')
+    plt.xlabel('specmatch library vsini (km/s)');plt.ylabel('Cannon vsini (km/s)')
 
-	# save stats to dataframe
-	keys = ['model','label','bias','rms']
-	order_data = pd.DataFrame(
-	    (dict(zip(keys, [model_suffix, 'teff', teff_bias, teff_rms])),
-	    dict(zip(keys, [model_suffix, 'logg', logg_bias, logg_rms])),
-	    dict(zip(keys, [model_suffix, 'feh', feh_bias, feh_rms])),
-	    dict(zip(keys, [model_suffix, 'vsini', vsini_bias, vsini_rms]))))
-	print(order_data)
-	order_data_path = './data/cannon_models/rchip_order_stats.csv'
-	existing_order_data = pd.read_csv(order_data_path)
-	updated_order_data  = pd.concat(
-			[existing_order_data, order_data])
-	updated_order_data.to_csv(order_data_path, index=False)
+    plt.subplot(235)
+    psf_bias, psf_rms = plot_label_one2one(
+        cannon_label_df.smemp_psf, 
+        cannon_label_df.cannon_psf)
+    plt.plot([0.5,2],[0.5,2], 'b-')
+    plt.xlabel('specmatch library PSF');plt.ylabel('Cannon PSF')
+
+    # save stats to dataframe
+    keys = ['model','label','bias','rms']
+    order_data = pd.DataFrame(
+        (dict(zip(keys, [model_suffix, 'teff', teff_bias, teff_rms])),
+        dict(zip(keys, [model_suffix, 'logg', logg_bias, logg_rms])),
+        dict(zip(keys, [model_suffix, 'feh', feh_bias, feh_rms])),
+        dict(zip(keys, [model_suffix, 'vsini', vsini_bias, vsini_rms]))))
+    print(order_data)
+    order_data_path = './data/cannon_models/rchip_order_stats.csv'
+    existing_order_data = pd.read_csv(order_data_path)
+    updated_order_data  = pd.concat(
+    		[existing_order_data, order_data])
+    updated_order_data.to_csv(order_data_path, index=False)
 
 
-	# save plot
-	figure_path = './data/cannon_models/{}/one2one.png'.format(model_suffix)
-	plt.savefig(figure_path, dpi=300, bbox_inches='tight')
-	print('one-to-one plot saved to saved to {}'.format(figure_path))
+    # save plot
+    figure_path = './data/cannon_models/{}/one2one.png'.format(model_suffix)
+    plt.savefig(figure_path, dpi=300, bbox_inches='tight')
+    print('one-to-one plot saved to saved to {}'.format(figure_path))
 
 

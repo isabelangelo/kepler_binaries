@@ -35,44 +35,44 @@ raghavan2010_singles = raghavan2010_singles[columns_to_keep].rename(columns=
     {'Teff':'spocs_teff','logg':'spocs_logg', '[M/H]':'spocs_feh',
     'Vsini':'spocs_vsini','psf':'smemp_psf'})
 raghavan2010_singles.to_csv('./data/label_and_metric_dataframes/raghavan_single_labels.csv', index=False)
-import pdb;pdb.set_trace()
+
 
 # rsync HIRES spectra of Raghavan 2010 single stars ============================================== 
 # add row to match CKS obs_id row
-print('copying Raghavan 2010 single sample spectra from cadence')
-raghavan2010_singles['obs_id'] = ['r'+i for i in raghavan2010_singles.observation_id]
-for index, row in raghavan2010_singles.iterrows():
-    obs_ids = [row.observation_id.replace('rj','bj'), row.obs_id, row.obs_id.replace('rj','ij')]
-    for obs_id in obs_ids:
-        obs_filename = obs_id+'.fits'
-        if os.path.exists('./data/raghavan2010_singles_spectra/'+obs_filename):
-            print('{} already in ./data/raghavan2010_singles_spectra/'.format(obs_filename))
-            pass
-        else:
-            # write command
-            command = "rsync observer@cadence.caltech.edu:/mir3/iodfitsdb/{} ./data/raghavan2010_singles_spectra/{}".format(
-                obs_filename,
-                obs_filename)
-            run_rsync(command)
-    print('copied {} b,r,i chip spectra to ./data/raghavan2010_singles_spectra/'.format(row.resolvable_name))
+# print('copying Raghavan 2010 single sample spectra from cadence')
+# raghavan2010_singles['obs_id'] = ['r'+i for i in raghavan2010_singles.observation_id]
+# for index, row in raghavan2010_singles.iterrows():
+#     obs_ids = [row.observation_id.replace('rj','bj'), row.obs_id, row.obs_id.replace('rj','ij')]
+#     for obs_id in obs_ids:
+#         obs_filename = obs_id+'.fits'
+#         if os.path.exists('./data/raghavan2010_singles_spectra/'+obs_filename):
+#             print('{} already in ./data/raghavan2010_singles_spectra/'.format(obs_filename))
+#             pass
+#         else:
+#             # write command
+#             command = "rsync observer@cadence.caltech.edu:/mir3/iodfitsdb/{} ./data/raghavan2010_singles_spectra/{}".format(
+#                 obs_filename,
+#                 obs_filename)
+#             run_rsync(command)
+#     print('copied {} b,r,i chip spectra to ./data/raghavan2010_singles_spectra/'.format(row.resolvable_name))
 
 
 # shift and register spectra with specmatch-emp ========================================================
 
-print('shifting and registering Raghavan 2010 single spectra for binary model validation')
-raghavan2010_spectrum_ids = [i[37:-5] for i in glob.glob('./data/raghavan2010_singles_spectra/ij*.fits')]
-for spectrum_id in raghavan2010_spectrum_ids:
-	input_path = './data/raghavan2010_singles_spectra'
-	output_path = './data/raghavan2010_singles_spectra_shifted'
-	if os.path.exists(output_path+'/r{}_adj.fits'.format(spectrum_id)):
-		print('{} already in ./data/raghavan2010_singles_spectra_shifted/'.format(spectrum_id))
-		pass
-	else:
-		command = 'smemp shift -d {} -o {} {}'.format(
-		    input_path, 
-		    output_path, 
-		    spectrum_id)
-		os.system(command)
+# print('shifting and registering Raghavan 2010 single spectra for binary model validation')
+# raghavan2010_spectrum_ids = [i[37:-5] for i in glob.glob('./data/raghavan2010_singles_spectra/ij*.fits')]
+# for spectrum_id in raghavan2010_spectrum_ids:
+# 	input_path = './data/raghavan2010_singles_spectra'
+# 	output_path = './data/raghavan2010_singles_spectra_shifted'
+# 	if os.path.exists(output_path+'/r{}_adj.fits'.format(spectrum_id)):
+# 		print('{} already in ./data/raghavan2010_singles_spectra_shifted/'.format(spectrum_id))
+# 		pass
+# 	else:
+# 		command = 'smemp shift -d {} -o {} {}'.format(
+# 		    input_path, 
+# 		    output_path, 
+# 		    spectrum_id)
+# 		os.system(command)
 
 
 # store wavelet-filtered fluxes ==================================================================
@@ -96,7 +96,7 @@ for order_n in range(1,17):
 		# load file data
 		filename = '{}/{}_adj.fits'.format(
 			shifted_path,  
-			row.observation_id.replace('j','rj'))
+			row.lib_obs)
 		id_starname_list.append(row.id_starname) # save star name for column
 		print(row.id_starname, end=', ')
 
