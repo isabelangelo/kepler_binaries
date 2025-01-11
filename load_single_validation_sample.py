@@ -152,7 +152,5 @@ print(sigma_path_original)
 
 
 
-df1 = pd.read_csv('./data/spectrum_dataframes/raghavan_single_sigma_dwt_TEST.csv')
-df2 = pd.read_csv('./data/spectrum_dataframes/raghavan_single_sigma_dwt.csv')
-False in df1==df2
+
 

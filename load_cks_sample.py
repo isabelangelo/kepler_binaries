@@ -95,39 +95,39 @@ print('table with CKS + CKS-cool stars ({} total) saved to {}'.format(
     len(cks_stars),
     cks_stars_filename))
 
-# =================== transfer spectra from cadence =========================
+# # =================== transfer spectra from cadence =========================
 
-# copy over CKS stars
-for index, row in cks_stars.iterrows():
-    # filenames for rsync command
-    obs_ids = [row.obs_id.replace('rj','bj'), row.obs_id, row.obs_id.replace('rj','ij')]
-    for obs_id in obs_ids:
-        obs_filename = obs_id+'.fits'
-        if os.path.exists('./data/cks-spectra/'+obs_filename):
-            print('{} already in ./data/cks-spectra/'.format(obs_filename))
-            pass
-        else:
-            # write command
-            command = "rsync observer@cadence.caltech.edu:/mir3/iodfitsdb/{} ./data/cks-spectra/{}".format(
-                obs_filename,
-                obs_filename)
-            run_rsync(command)
-    print('copied {} b,r,i chip spectra to ./data/cks-spectra/'.format(row.id_starname))
+# # copy over CKS stars
+# for index, row in cks_stars.iterrows():
+#     # filenames for rsync command
+#     obs_ids = [row.obs_id.replace('rj','bj'), row.obs_id, row.obs_id.replace('rj','ij')]
+#     for obs_id in obs_ids:
+#         obs_filename = obs_id+'.fits'
+#         if os.path.exists('./data/cks-spectra/'+obs_filename):
+#             print('{} already in ./data/cks-spectra/'.format(obs_filename))
+#             pass
+#         else:
+#             # write command
+#             command = "rsync observer@cadence.caltech.edu:/mir3/iodfitsdb/{} ./data/cks-spectra/{}".format(
+#                 obs_filename,
+#                 obs_filename)
+#             run_rsync(command)
+#     print('copied {} b,r,i chip spectra to ./data/cks-spectra/'.format(row.id_starname))
 
 
-# ================== shift + register spectra =============================================
-for index, row in cks_stars.iterrows():
-    shifted_rchip_path = './data/cks-spectra_shifted/{}_adj.fits'.format(row.obs_id)
-    if os.path.exists(shifted_rchip_path):
-        pass
-    else:
-        input_path = './data/cks-spectra'
-        output_path = './data/cks-spectra_shifted'
-        command = 'smemp shift -d {} -o {} {}'.format(
-            input_path, 
-            output_path, 
-            row.obs_id.replace('r',''))
-        os.system(command)
+# # ================== shift + register spectra =============================================
+# for index, row in cks_stars.iterrows():
+#     shifted_rchip_path = './data/cks-spectra_shifted/{}_adj.fits'.format(row.obs_id)
+#     if os.path.exists(shifted_rchip_path):
+#         pass
+#     else:
+#         input_path = './data/cks-spectra'
+#         output_path = './data/cks-spectra_shifted'
+#         command = 'smemp shift -d {} -o {} {}'.format(
+#             input_path, 
+#             output_path, 
+#             row.obs_id.replace('r',''))
+#         os.system(command)
 
 # ================== wavelet-filter + store spectra =============================================
 
@@ -151,7 +151,6 @@ def cks_sample_data(filter_wavelets):
                 row.obs_id)
             id_starname = row.id_starname.replace(' ', '')
             id_starname_list.append(id_starname) # save star name for column
-            print(id_starname)
 
             # load spectrum from file
             # and resample to unclipped HIRES wavelength scale
@@ -177,7 +176,8 @@ def cks_sample_data(filter_wavelets):
         # save to final dataframe
         flux_df = pd.concat([flux_df, flux_df_n])
         sigma_df = pd.concat([sigma_df, sigma_df_n])
-        return flux_df, sigma_df
+    
+    return flux_df, sigma_df
 
 # write flux, sigma to .csv files
 print('storing flux, sigma of CKS sample to dataframes')
@@ -186,7 +186,7 @@ flux_df_dwt, sigma_df_dwt = cks_sample_data(True)
 flux_df_dwt.to_csv('{}/cks_flux_dwt.csv'.format(df_path), index=False)
 sigma_df_dwt.to_csv('{}/cks_sigma_dwt.csv'.format(df_path), index=False)
 print('wavelet-filtered CKS spectra saved to .csv files')
-# flux_df_original, sigma_df_original = cks_sample_data(False)
-# flux_df_original.to_csv('{}/cks_flux_original.csv'.format(df_path), index=False)
-# sigma_df_original.to_csv('{}/cks_sigma_original.csv'.format(df_path), index=False)
-# print('original CKS spectra saved to .csv files')
+flux_df_original, sigma_df_original = cks_sample_data(False)
+flux_df_original.to_csv('{}/cks_flux_original.csv'.format(df_path), index=False)
+sigma_df_original.to_csv('{}/cks_sigma_original.csv'.format(df_path), index=False)
+print('original CKS spectra saved to .csv files')
