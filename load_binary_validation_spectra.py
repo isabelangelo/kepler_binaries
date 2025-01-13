@@ -7,8 +7,36 @@ import glob
 import os
 
 # unresolved binary sample
-kraus_unresolved_binaries = pd.read_csv('./data/literature_data/Kraus_unresolved_binary_obs_ids.csv')
-kraus_unresolved_binaries['id_starname'] = [i.replace(' ', '') for i in kraus_unresolved_binaries['resolvable_name']]
+kraus_unresolved_companions = pd.read_csv('./data/literature_data/Kraus_KOI_sample/kraus_unresolved_companions.csv')
+kraus_unresolved_companions = kraus_unresolved_companions.rename(columns={"Name": "resolvable_name"})
+
+kraus_binary_obs_ids = pd.read_csv('./data/literature_data/Kraus_unresolved_binary_obs_ids.csv')
+kraus_binary_id_starnames = [i.replace('KOI-', 'K0') for i in kraus_binary_obs_ids.resolvable_name]
+kraus_binary_obs_ids.insert(1, 'id_starname', kraus_binary_id_starnames)
+
+cks_labels = pd.read_csv('./data/label_and_metric_dataframes/cks_labels.csv')
+
+# add binary detection information from Kraus catalog
+kraus_binary_labels = pd.merge(kraus_binary_obs_ids[['resolvable_name', 'id_starname', 'observation_id']], 
+         kraus_unresolved_companions[['resolvable_name','CC','Pbin', 'sep_arcsec','sep_mas','dmag','dKmag','source']], 
+         on='resolvable_name')
+# Replace NaN values in the 'dmag' column with the corresponding 'dKmag' values
+kraus_binary_labels.loc[kraus_binary_labels['dmag'].isna(), 'dmag'] = kraus_binary_labels['dKmag']
+
+# flag stars with multiple unresolved companions
+# note: I won't use the CC designation, since this includes companions with sep>0.8"
+kraus_binary_labels['multiple_companions'] = False
+duplicates = kraus_binary_labels['id_starname'].duplicated(keep=False)
+kraus_binary_labels['multiple_companions'] = duplicates
+
+# remove fainter companions
+kraus_binary_labels = kraus_binary_labels.sort_values(by=['id_starname', 'dmag'], ascending=[True, True])
+kraus_binary_labels = kraus_binary_labels.drop_duplicates(subset='id_starname', keep='first')
+
+# if reported, include CKS labels
+kraus_binary_labels.merge(cks_labels[['id_starname','cks_teff','cks_logg','cks_feh','cks_vsini']], 
+                          on='id_starname', how='left')
+kraus_binary_labels.to_csv('./data/label_and_metric_dataframes/kraus_binary_labels.csv')
 
 # # rsync HIRES spectra of Raghavan 2010 single stars ============================================== 
 # # add row to match CKS obs_id row
@@ -66,7 +94,7 @@ def flux_and_sigma_dataframes(filter_wavelets = True):
 		order_idx = order_n - 1
 
 		# get order data for all stars in training set
-		for idx, row in kraus_unresolved_binaries.iterrows():
+		for idx, row in kraus_binary_labels.iterrows():
 			# load file data
 			filename = '{}/{}_adj.fits'.format(
 				shifted_path,  
@@ -105,8 +133,8 @@ def flux_and_sigma_dataframes(filter_wavelets = True):
 
 # write wavelet-filtered flux, sigma to .csv files
 flux_df_dwt, sigma_df_dwt = flux_and_sigma_dataframes(filter_wavelets = True)
-flux_path_dwt = '{}/kraus_binary_flux_dwt_TEST.csv'.format(df_path)
-sigma_path_dwt = '{}/kraus_binary_sigma_dwt_TEST.csv'.format(df_path)
+flux_path_dwt = '{}/kraus_binary_flux_dwt.csv'.format(df_path)
+sigma_path_dwt = '{}/kraus_binary_sigma_dwt.csv'.format(df_path)
 flux_df_dwt.to_csv(flux_path_dwt, index=False)
 sigma_df_dwt.to_csv(sigma_path_dwt, index=False)
 print('wavelet-filtered spectra saved to:')
@@ -115,8 +143,8 @@ print(sigma_path_dwt)
 
 # write original flux, sigma to .csv files
 flux_df_original, sigma_df_original = flux_and_sigma_dataframes(filter_wavelets = False)
-flux_path_original = '{}/kraus_binary_flux_original_TEST.csv'.format(df_path)
-sigma_path_original = '{}/kraus_binary_sigma_original_TEST.csv'.format(df_path)
+flux_path_original = '{}/kraus_binary_flux_original.csv'.format(df_path)
+sigma_path_original = '{}/kraus_binary_sigma_original.csv'.format(df_path)
 flux_df_original.to_csv(flux_path_original, index=False)
 sigma_df_original.to_csv(sigma_path_original, index=False)
 print('original spectra saved to:')

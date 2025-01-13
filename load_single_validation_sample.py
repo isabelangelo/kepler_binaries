@@ -132,8 +132,8 @@ def flux_and_sigma_dataframes(filter_wavelets = True):
 
 # write wavelet-filtered flux, sigma to .csv files
 flux_df_dwt, sigma_df_dwt = flux_and_sigma_dataframes(filter_wavelets = True)
-flux_path_dwt = '{}/raghavan_single_flux_dwt_TEST.csv'.format(df_path)
-sigma_path_dwt = '{}/raghavan_single_sigma_dwt_TEST.csv'.format(df_path)
+flux_path_dwt = '{}/raghavan_single_flux_dwt.csv'.format(df_path)
+sigma_path_dwt = '{}/raghavan_single_sigma_dwt.csv'.format(df_path)
 flux_df_dwt.to_csv(flux_path_dwt, index=False)
 sigma_df_dwt.to_csv(sigma_path_dwt, index=False)
 print('wavelet-filtered spectra saved to:')
@@ -142,8 +142,8 @@ print(sigma_path_dwt)
 
 # write original flux, sigma to .csv files
 flux_df_original, sigma_df_original = flux_and_sigma_dataframes(filter_wavelets = False)
-flux_path_original = '{}/raghavan_single_flux_original_TEST.csv'.format(df_path)
-sigma_path_original = '{}/raghavan_single_sigma_original_TEST.csv'.format(df_path)
+flux_path_original = '{}/raghavan_single_flux_original.csv'.format(df_path)
+sigma_path_original = '{}/raghavan_single_sigma_original.csv'.format(df_path)
 flux_df_original.to_csv(flux_path_original, index=False)
 sigma_df_original.to_csv(sigma_path_original, index=False)
 print('original spectra saved to:')
