@@ -117,8 +117,8 @@ class Spectrum(object):
 
         # re-parameterize from vsini to log(vsini)
         # note: log(vsini)=-2-1 is vsini=0.01-10km/s
-        min_bounds[-3] = -2
-        max_bounds[-3] = 1
+        min_bounds[3] = -2
+        max_bounds[3] = 1
 
         return tuple(zip(min_bounds, max_bounds))
     
@@ -143,7 +143,7 @@ class Spectrum(object):
             We use the Bayesian Likelihood formula for this calculation.
             """
             # re-parameterize from log(vsini) to vsini
-            param[-3] = 10**param[-3]
+            param[3] = 10**param[3]
 
             # determine model, error term based on piecewise model
             sn2 = self.sigma**2 + cannon_model.s2
@@ -168,8 +168,8 @@ class Spectrum(object):
         hot_param_init = self.hot_cannon_model._fiducials.copy()[2:].tolist() + [0]
 
         # re-parameterize from vsini to log(vsini)
-        cool_param_init[-3] = np.log10(cool_param_init[-3])
-        hot_param_init[-3] = np.log10(hot_param_init[-3])
+        cool_param_init[3] = np.log10(cool_param_init[3])
+        hot_param_init[3] = np.log10(hot_param_init[3])
 
         # coarse brute search to determine initial Teff, logg
         teff_hr = [3000, 3500, 4000, 4500, 5000, 5500, 5750, 6000, 6500, 5250]
@@ -210,8 +210,7 @@ class Spectrum(object):
             
         # re-parameterize from log(vsini) to vsini
         self.fit_cannon_labels = op.x.copy()
-        self.fit_cannon_labels[-3] = 10**self.fit_cannon_labels[-3]
-
+        self.fit_cannon_labels[3] = 10**self.fit_cannon_labels[3]
 
         # update spectrum attributes
         self.fit_logL = -1*op.fun.copy()
