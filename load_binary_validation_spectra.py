@@ -34,9 +34,12 @@ kraus_binary_labels = kraus_binary_labels.sort_values(by=['id_starname', 'dmag']
 kraus_binary_labels = kraus_binary_labels.drop_duplicates(subset='id_starname', keep='first')
 
 # if reported, include CKS labels
-kraus_binary_labels.merge(cks_labels[['id_starname','cks_teff','cks_logg','cks_feh','cks_vsini']], 
-                          on='id_starname', how='left')
+kraus_binary_labels = pd.merge(
+	kraus_binary_labels, 
+	cks_labels[['id_starname','cks_teff','cks_logg','cks_feh','cks_vsini']], 
+	on='id_starname', how='left')
 kraus_binary_labels.to_csv('./data/label_and_metric_dataframes/kraus_binary_labels.csv')
+
 
 # # rsync HIRES spectra of Raghavan 2010 single stars ============================================== 
 # # add row to match CKS obs_id row

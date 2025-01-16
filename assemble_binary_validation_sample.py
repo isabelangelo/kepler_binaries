@@ -103,7 +103,7 @@ for idx, row in kraus_companions.iterrows():
 
 # write to .csv file
 binary_sample_path = './data/literature_data/Kraus_KOI_sample/kraus_unresolved_companions.csv'
-kraus_companions.to_csv(binary_sample_path)
+kraus_companions.to_csv(binary_sample_path, index=False)
 print('binary sample + separation/dmag information saved to {}'.format(binary_sample_path))
 
 # print names for jump query to get observation IDs

@@ -39,10 +39,10 @@ class Spectrum(object):
         # compute telluric mask
         self.mask = np.empty_like(self.flux).astype(bool)
         self.mask.fill(True)
-        for n, row in mask_table_cut.iterrows():
-            start = row['minw']
-            end = row['maxw']
-            self.mask[(self.wav>start) & (self.wav<end)] = False
+        # for n, row in mask_table_cut.iterrows():
+        #     start = row['minw']
+        #     end = row['maxw']
+        #     self.mask[(self.wav>start) & (self.wav<end)] = False
 
         # store cannon model information
         self.cool_cannon_model = cool_cannon_model
@@ -163,13 +163,14 @@ class Spectrum(object):
 
             return negative_logLikelihood
 
-        # determine initial labels
+        # determine initial labels, excluding teff/logg
         cool_param_init = self.cool_cannon_model._fiducials.copy()[2:].tolist() + [0]
         hot_param_init = self.hot_cannon_model._fiducials.copy()[2:].tolist() + [0]
 
         # re-parameterize from vsini to log(vsini)
-        cool_param_init[3] = np.log10(cool_param_init[3])
-        hot_param_init[3] = np.log10(hot_param_init[3])
+        # indexing at 1 since teff/logg are excluded
+        cool_param_init[1] = np.log10(cool_param_init[1])
+        hot_param_init[1] = np.log10(hot_param_init[1])
 
         # coarse brute search to determine initial Teff, logg
         teff_hr = [3000, 3500, 4000, 4500, 5000, 5500, 5750, 6000, 6500, 5250]
