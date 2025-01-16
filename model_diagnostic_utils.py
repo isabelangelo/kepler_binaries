@@ -96,72 +96,78 @@ def fit_metrics(flux, sigma, model_type, order_numbers, cool_model=None, hot_mod
 
 	return sum_resid_sq, chi_sq, fit_labels
 
-def sample_metrics(sample, model_type, order_numbers, cool_model=None, hot_model=None):
-	"""
-	Stores the goodness-of-fit metrics and labels associated with the
-	single star validation sample from Raghavan et al. (2010)
-	for a given Cannon or Payne model.
+def sample_metrics(sample, model_type, order_numbers, model_teff_range, 
+                   cool_model=None, hot_model=None):
+    """
+    Stores the goodness-of-fit metrics and labels associated with the
+    single star validation sample from Raghavan et al. (2010)
+    for a given Cannon or Payne model.
+    
+    Args:
+        sample (str): 'single' or 'binary', determines validation which sample 
+            to compute metrics for (raghavan single star or kraus binary sample)
+        model_type (str): 'cannon', 'piecewise_cannon' or 'payne'
+        model_teff_range (tuple): (teff_min, teff_max) of the training set for the model
+            of interest. This is to filter the validation samples to only include
+            stars with temperatures within the model range 
+        order_numbers: HIRES orders included in trained model
+        cool_model (tc.CannonModel or None):
+            - if model_type='cannon' or 'payne', this should be None
+            - if model_type='piecewise_cannon', this is the cool star 
+                component fo the piecewise Cannon model, output from 
+                tc.CannonModel.read()
+        hot_model (tc.CannonModel or tuple):
+            - if model_type='cannon', this is the Cannon model output from
+                tc.CannonModel.read()
+            - if model_type='payne', this is the tuple output of read_payne_model()
+            - if model_type='piecewise_cannon', this is the hot star 
+                component fo the piecewise Cannon model, output from 
+                tc.CannonModel.read() 
+    Returns:
+        metric_df: Dataframe with labels + fit metrics for single star sample
+        computed with model of interest
+    """
+    
+    # determine flux, sigma and labels for given sample
+    # labels are filtered to exclude stars with teff outside training ranges
+    teff_min, teff_max = model_teff_range
+    if sample=='single':
+        flux_df = single_flux.query('order_number in @order_numbers')
+        sigma_df = single_sigma.query('order_number in @order_numbers')
+        labels = single_labels.query('(spocs_teff>@teff_min) & (spocs_teff<@teff_max)')
+        
+    elif sample=='binary':
+        flux_df = binary_flux.query('order_number in @order_numbers')
+        sigma_df = binary_sigma.query('order_number in @order_numbers')
+        labels = binary_labels.query('(cks_teff>@teff_min) & (cks_teff<@teff_max)')
 
-	Args:
-	    sample (str): 'single' or 'binary', determines validation which sample 
-	        to compute metrics for (raghavan single star or kraus binary sample)
-	    model_type (str): 'cannon', 'piecewise_cannon' or 'payne'
-	    order_numbers: HIRES orders included in trained model
-	    cool_model (tc.CannonModel or None):
-	        - if model_type='cannon' or 'payne', this should be None
-	        - if model_type='piecewise_cannon', this is the cool star 
-	            component fo the piecewise Cannon model, output from 
-	            tc.CannonModel.read()
-	    hot_model (tc.CannonModel or tuple):
-	        - if model_type='cannon', this is the Cannon model output from
-	            tc.CannonModel.read()
-	        - if model_type='payne', this is the tuple output of read_payne_model()
-	        - if model_type='piecewise_cannon', this is the hot star 
-	            component fo the piecewise Cannon model, output from 
-	            tc.CannonModel.read()  
-	Returns:
-	    metric_df: Dataframe with labels + fit metrics for single star sample
-	    computed with model of interest
-	"""
+    keys = ['id_starname', 'sum_resid_sq', 'chi_sq', 'model_teff', 'model_logg',\
+           'model_feh', 'model_vsini', 'model_psf', 'model_rv']
+    metric_data = []
+    
+    for id_starname in labels[:10].id_starname.to_numpy():
+        
+        # specrtrum data
+        flux = flux_df[id_starname]
+        sigma = sigma_df[id_starname]
 
-	# determine flux, sigma and labels for given sample
-	if sample=='single':
-	    flux_df = single_flux.query('order_number in @order_numbers')
-	    sigma_df = single_sigma.query('order_number in @order_numbers')
-	    labels = single_labels
-	    
-	elif sample=='binary':
-	    flux_df = binary_flux.query('order_number in @order_numbers')
-	    sigma_df = binary_sigma.query('order_number in @order_numbers')
-	    labels = binary_labels
+        # model goodness-of-fit metrics
+        sum_resid_sq, chi_sq, fit_labels = fit_metrics(flux, sigma, 
+                      model_type, order_numbers, 
+                      cool_model=cool_model, hot_model=hot_model)
 
-	keys = ['id_starname', 'sum_resid_sq', 'chi_sq', 'model_teff', 'model_logg',\
-	       'model_feh', 'model_vsini', 'model_psf', 'model_rv']
-	metric_data = []
+        # if model doesn't include psf, set to nan in dataframe
+        if len(fit_labels)<6:
+            fit_labels = np.insert(fit_labels, -1, np.nan, axis=None)
 
-	for id_starname in labels.id_starname.to_numpy():
-	    
-	    # specrtrum data
-	    flux = flux_df[id_starname]
-	    sigma = sigma_df[id_starname]
+        # combine data for dataframe
+        values = [id_starname, sum_resid_sq, chi_sq] + [i for i in fit_labels]
+        metric_data.append(dict(zip(keys,values)))
 
-	    # model goodness-of-fit metrics
-	    sum_resid_sq, chi_sq, fit_labels = fit_metrics(flux, sigma, 
-	                  model_type, order_numbers, 
-	                  cool_model=cool_model, hot_model=hot_model)
-
-	    # if model doesn't include psf, set to nan in dataframe
-	    if len(fit_labels)<6:
-	        fit_labels = np.insert(fit_labels, -1, np.nan, axis=None)
-
-	    # combine data for dataframe
-	    values = [id_starname, sum_resid_sq, chi_sq] + [i for i in fit_labels]
-	    metric_data.append(dict(zip(keys,values)))
-
-	metric_df = pd.DataFrame(metric_data)
-	metric_df = pd.merge(labels, metric_df)
-
-	return metric_df
+    metric_df = pd.DataFrame(metric_data)
+    metric_df = pd.merge(labels, metric_df)
+    
+    return metric_df
 
 def plot_diagnostics(single_metrics, binary_metrics, title_str):
 	"""
@@ -243,4 +249,5 @@ def plot_diagnostics(single_metrics, binary_metrics, title_str):
 	plt.subplots_adjust(hspace=0.4)
 	plt.suptitle(title_str)
 	plt.tight_layout()
+	plt.savefig('./data/model_diagnostics/'+title_str+'/'+title_str+'_plot.png', dpi=300)
 
