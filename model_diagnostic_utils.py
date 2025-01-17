@@ -47,34 +47,37 @@ def fit_metrics(flux, sigma, model_type, order_numbers, cool_model=None, hot_mod
 	Args:
 	    flux (np.array or pandas.core.series.Series): spectrum flux
 	    sigma (np.array or pandas.core.series.Series): spectrum flux errors
-	    model_type (str): 'cannon', 'piecewise_cannon' or 'payne'
+	    model_type (str): 'hot_cannon', 'piecewise_cannon' or 'payne'
 	    order_numbers: HIRES orders included in trained model
-	    cool_model (tc.CannonModel or None):
-	        - if model_type='cannon' or 'payne', this should be None
-	        - if model_type='piecewise_cannon', this is the cool star 
-	            component fo the piecewise Cannon model, output from 
-	            tc.CannonModel.read()
-	    hot_model (tc.CannonModel or tuple):
-	        - if model_type='cannon', this is the Cannon model output from
-	            tc.CannonModel.read()
-	        - if model_type='payne', this is the tuple output of read_payne_model()
-	        - if model_type='piecewise_cannon', this is the hot star 
-	            component fo the piecewise Cannon model, output from 
-	            tc.CannonModel.read()      
+        cool_model (tc.CannonModel or None):
+            - if model_type='hot_cannon' or 'payne', this should be None
+            - if model_type='piecewise_cannon', this is the cool star 
+                component fo the piecewise Cannon model, output from 
+                tc.CannonModel.read()
+        hot_model (tc.CannonModel or tuple):
+            - if model_type='cannon', this is the Cannon model output from
+                tc.CannonModel.read()
+            - if model_type='payne', this is the tuple output of read_payne_model()
+            - if model_type='piecewise_cannon', this is the hot star 
+                component fo the piecewise Cannon model, output from 
+                tc.CannonModel.read()      
 	Returns:
 	    sum_resid_sq (float): sum(data-model)^2 associated with best-fit model
 	    chi_sq (float): sum(data-model)^2/sigma^2 associated with best-fit model
 	    fit_labels (np.array): labels associated with best-fit model
 	    
 	"""
+	if 'cannon' in model_type:
+		# initiaize spectrum obkect
+		if model_type=='hot_cannon':
+			spec = spectrum.Spectrum(flux, sigma, order_numbers, hot_model, hot_model)
+		elif model_type=='piecewise_cannon':
+			spec = spectrum.Spectrum(flux, sigma, order_numbers, cool_model, hot_model)
 
-	if model_type=='cannon' or model_type=='piecewise_cannon':
-	    
-	    # determine best-fit single star
-	    spec = spectrum.Spectrum(flux, sigma, order_numbers, cool_model, hot_model)
-	    spec.fit_single_star()
-	    data_minus_model = flux - spec.model_flux
-	    fit_labels = spec.fit_cannon_labels
+		# determine best-fit single star
+		spec.fit_single_star()
+		data_minus_model = flux - spec.model_flux
+		fit_labels = spec.fit_cannon_labels
 	    
 	elif model_type=='payne':
 	    
@@ -106,13 +109,13 @@ def sample_metrics(sample, model_type, order_numbers, model_teff_range,
     Args:
         sample (str): 'single' or 'binary', determines validation which sample 
             to compute metrics for (raghavan single star or kraus binary sample)
-        model_type (str): 'cannon', 'piecewise_cannon' or 'payne'
+        model_type (str): 'hot_cannon', 'piecewise_cannon' or 'payne'
+        order_numbers: HIRES orders included in trained model
         model_teff_range (tuple): (teff_min, teff_max) of the training set for the model
             of interest. This is to filter the validation samples to only include
             stars with temperatures within the model range 
-        order_numbers: HIRES orders included in trained model
         cool_model (tc.CannonModel or None):
-            - if model_type='cannon' or 'payne', this should be None
+            - if model_type='hot_cannon' or 'payne', this should be None
             - if model_type='piecewise_cannon', this is the cool star 
                 component fo the piecewise Cannon model, output from 
                 tc.CannonModel.read()
@@ -122,7 +125,7 @@ def sample_metrics(sample, model_type, order_numbers, model_teff_range,
             - if model_type='payne', this is the tuple output of read_payne_model()
             - if model_type='piecewise_cannon', this is the hot star 
                 component fo the piecewise Cannon model, output from 
-                tc.CannonModel.read() 
+                tc.CannonModel.read()   
     Returns:
         metric_df: Dataframe with labels + fit metrics for single star sample
         computed with model of interest
@@ -145,7 +148,7 @@ def sample_metrics(sample, model_type, order_numbers, model_teff_range,
            'model_feh', 'model_vsini', 'model_psf', 'model_rv']
     metric_data = []
     
-    for id_starname in labels[:10].id_starname.to_numpy():
+    for id_starname in labels.id_starname.to_numpy():
         
         # specrtrum data
         flux = flux_df[id_starname]
